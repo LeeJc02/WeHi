@@ -1,0 +1,193 @@
+openapi: 3.0.3
+info:
+  title: Chat MVC API
+  version: 1.0.0
+  description: REST API for the split frontend/backend chat application.
+servers:
+  - url: http://127.0.0.1:8081
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Token
+  schemas:
+    ApiResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data: {}
+    RegisterRequest:
+      type: object
+      required: [username, display_name, password]
+      properties:
+        username: { type: string }
+        display_name: { type: string }
+        password: { type: string }
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string }
+    AddFriendRequest:
+      type: object
+      required: [friend_id]
+      properties:
+        friend_id: { type: integer, format: uint64 }
+    CreateDirectConversationRequest:
+      type: object
+      required: [target_user_id]
+      properties:
+        target_user_id: { type: integer, format: uint64 }
+    CreateGroupConversationRequest:
+      type: object
+      required: [name, member_ids]
+      properties:
+        name: { type: string }
+        member_ids:
+          type: array
+          items: { type: integer, format: uint64 }
+    SendMessageRequest:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string }
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: ok
+  /openapi.yaml:
+    get:
+      summary: Download OpenAPI spec
+      responses:
+        '200':
+          description: YAML spec
+  /api/v1/auth/register:
+    post:
+      summary: Register user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200': { description: ok }
+  /api/v1/auth/login:
+    post:
+      summary: Login user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200': { description: ok }
+  /api/v1/users:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: List users
+      responses:
+        '200': { description: ok }
+  /api/v1/users/me:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Current user
+      responses:
+        '200': { description: ok }
+  /api/v1/friends:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: List friends
+      responses:
+        '200': { description: ok }
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Add friend
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddFriendRequest'
+      responses:
+        '200': { description: ok }
+  /api/v1/conversations:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: List conversations
+      responses:
+        '200': { description: ok }
+  /api/v1/conversations/direct:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Create or reuse direct conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDirectConversationRequest'
+      responses:
+        '200': { description: ok }
+  /api/v1/conversations/group:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Create group conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGroupConversationRequest'
+      responses:
+        '200': { description: ok }
+  /api/v1/conversations/{id}/messages:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: List messages
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: limit
+          schema: { type: integer }
+      responses:
+        '200': { description: ok }
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Send message
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '200': { description: ok }
+  /api/v1/conversations/{id}/read:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Mark conversation as read
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: ok }

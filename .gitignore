@@ -1,0 +1,14 @@
+.DS_Store
+.idea/
+
+backend/data/
+backend/.cache/
+
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+*.log
+client
+server
+worker
