@@ -1,27 +1,37 @@
-GO ?= go
-NPM ?= npm
+SHELL := /bin/bash
+GOCACHE ?= $(CURDIR)/.runtime/go-build
 
-.PHONY: backend-run backend-test frontend-install frontend-dev frontend-build frontend-lint frontend-smoke smoke
+.PHONY: start refresh stop smoke frontend-install frontend-lint frontend-build go-test local-up local-smoke local-down
 
-backend-run:
-	cd backend && $(GO) run ./cmd/api
+start:
+	./scripts/compose_up.sh
 
-backend-test:
-	cd backend && $(GO) test ./...
+refresh:
+	./scripts/compose_up.sh
+
+stop:
+	./scripts/compose_down.sh
+
+smoke:
+	./scripts/compose_smoke.sh
 
 frontend-install:
-	cd frontend && $(NPM) install
-
-frontend-dev:
-	cd frontend && $(NPM) run dev
-
-frontend-build:
-	cd frontend && $(NPM) run build
+	cd frontend && npm install
 
 frontend-lint:
-	cd frontend && $(NPM) run lint
+	cd frontend && npm run lint
 
-frontend-smoke:
-	cd frontend && $(NPM) run smoke -- http://127.0.0.1:8081
+frontend-build:
+	cd frontend && npm run build
 
-smoke: backend-test frontend-lint frontend-build
+go-test:
+	GOCACHE="$(GOCACHE)" go test ./cmd/... ./internal/... ./pkg/... ./services/...
+
+local-up:
+	./scripts/compose_up.sh
+
+local-smoke:
+	./scripts/compose_smoke.sh
+
+local-down:
+	./scripts/compose_down.sh

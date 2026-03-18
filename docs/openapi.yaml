@@ -1,0 +1,841 @@
+openapi: 3.0.3
+info:
+  title: Chat API
+  version: "1"
+  description: |
+    success: {code:0,message:"ok",data:<schema>}
+    error: {code:http_status,message,error_code}
+servers:
+  - { url: 'http://127.0.0.1:8081' }
+  - { url: 'http://127.0.0.1:8082' }
+  - { url: 'http://127.0.0.1:8083' }
+  - { url: 'http://127.0.0.1:28081' }
+  - { url: 'http://127.0.0.1:28082' }
+  - { url: 'http://127.0.0.1:28083' }
+
+components:
+  securitySchemes:
+    BearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+
+  schemas:
+    Err:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: integer }
+        message: { type: string }
+        error_code: { type: string }
+
+    Status:
+      type: object
+      properties:
+        status: { type: string }
+
+    U:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        username: { type: string }
+        display_name: { type: string }
+
+    A:
+      type: object
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        user: { $ref: '#/components/schemas/U' }
+
+    S:
+      type: object
+      properties:
+        id: { type: string }
+        device_id: { type: string }
+        user_agent: { type: string }
+        last_seen_at: { type: string }
+        expires_at: { type: string }
+        current: { type: boolean }
+
+    F: { $ref: '#/components/schemas/U' }
+
+    FR:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        status: { type: string }
+        direction: { type: string }
+        message: { type: string }
+        requester: { $ref: '#/components/schemas/U' }
+        addressee: { $ref: '#/components/schemas/U' }
+        created_at: { type: string }
+        updated_at: { type: string }
+
+    C:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        type: { type: string }
+        name: { type: string }
+        creator_id: { type: integer, format: int64 }
+        member_count: { type: integer }
+        pinned: { type: boolean }
+        last_read_seq: { type: integer, format: int64 }
+        unread_count: { type: integer }
+        last_message_seq: { type: integer, format: int64 }
+        last_message_sender: { type: integer, format: int64 }
+        last_message_preview: { type: string }
+        last_message_type: { type: string }
+        last_message_at: { type: string }
+
+    CM:
+      type: object
+      properties:
+        user_id: { type: integer, format: int64 }
+        username: { type: string }
+        display_name: { type: string }
+        role: { type: string }
+        last_read_seq: { type: integer, format: int64 }
+        joined_at: { type: string }
+        online: { type: boolean }
+
+    M:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        conversation_id: { type: integer, format: int64 }
+        seq: { type: integer, format: int64 }
+        sender_id: { type: integer, format: int64 }
+        message_type: { type: string }
+        content: { type: string }
+        client_msg_id: { type: string }
+        status: { type: string }
+        created_at: { type: string }
+
+    SH:
+      type: object
+      properties:
+        conversation_id: { type: integer, format: int64 }
+        name: { type: string }
+        type: { type: string }
+        updated_at: { type: string }
+
+    SM:
+      type: object
+      properties:
+        message_id: { type: integer, format: int64 }
+        conversation_id: { type: integer, format: int64 }
+        conversation_name: { type: string }
+        sender_id: { type: integer, format: int64 }
+        message_type: { type: string }
+        content: { type: string }
+        created_at: { type: string }
+
+    SR:
+      type: object
+      properties:
+        conversations:
+          type: array
+          items: { $ref: '#/components/schemas/SH' }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/SM' }
+        next_cursor: { type: string }
+
+    SC:
+      type: object
+      properties:
+        cursor: { type: integer, format: int64 }
+
+    SE:
+      type: object
+      properties:
+        cursor: { type: integer, format: int64 }
+        type: { type: string }
+        payload: { type: object, additionalProperties: true }
+        created_at: { type: string }
+
+    SER:
+      type: object
+      properties:
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/SE' }
+        next_cursor: { type: integer, format: int64 }
+        current_cursor: { type: integer, format: int64 }
+        has_more: { type: boolean }
+
+    Ready:
+      type: object
+      properties:
+        service: { type: object, additionalProperties: true }
+        database: { type: object, additionalProperties: true }
+        redis: { type: object, additionalProperties: true }
+        rabbitmq: { type: object, additionalProperties: true }
+        elasticsearch: { type: object, additionalProperties: true }
+
+    Reg:
+      type: object
+      required: [username, display_name, password]
+      properties:
+        username: { type: string }
+        display_name: { type: string }
+        password: { type: string }
+
+    Log:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string }
+
+    Ref:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token: { type: string }
+
+    Lo:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token: { type: string }
+
+    UP:
+      type: object
+      required: [display_name]
+      properties:
+        display_name: { type: string }
+
+    CFR:
+      type: object
+      required: [addressee_id]
+      properties:
+        addressee_id: { type: integer, format: int64 }
+        message: { type: string }
+
+    CDC:
+      type: object
+      required: [target_user_id]
+      properties:
+        target_user_id: { type: integer, format: int64 }
+
+    CGC:
+      type: object
+      required: [name, member_ids]
+      properties:
+        name: { type: string }
+        member_ids:
+          type: array
+          items: { type: integer, format: int64 }
+
+    RC:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+
+    ACM:
+      type: object
+      required: [member_ids]
+      properties:
+        member_ids:
+          type: array
+          items: { type: integer, format: int64 }
+
+    TO:
+      type: object
+      required: [user_id]
+      properties:
+        user_id: { type: integer, format: int64 }
+
+    PIN:
+      type: object
+      required: [pinned]
+      properties:
+        pinned: { type: boolean }
+
+    MSG:
+      type: object
+      required: [content]
+      properties:
+        message_type: { type: string }
+        content: { type: string }
+        client_msg_id: { type: string }
+
+    MR:
+      type: object
+      properties:
+        seq: { type: integer, format: int64 }
+
+    E_auth_ok:
+      type: object
+      properties:
+        type: { type: string, enum: [auth.ok] }
+        payload:
+          type: object
+          properties:
+            user_id: { type: integer, format: int64 }
+            session_id: { type: string }
+
+    E_msg_new:
+      type: object
+      properties:
+        type: { type: string, enum: [message.new] }
+        payload:
+          type: object
+          properties:
+            recipients:
+              type: array
+              items: { type: integer, format: int64 }
+            conversation_id: { type: integer, format: int64 }
+            message: { $ref: '#/components/schemas/M' }
+            conversation: { $ref: '#/components/schemas/C' }
+
+    E_read:
+      type: object
+      properties:
+        type: { type: string, enum: [conversation.read] }
+        payload:
+          type: object
+          properties:
+            recipients:
+              type: array
+              items: { type: integer, format: int64 }
+            conversation_id: { type: integer, format: int64 }
+            reader_id: { type: integer, format: int64 }
+            last_read_seq: { type: integer, format: int64 }
+
+    E_fr:
+      type: object
+      properties:
+        type: { type: string, enum: [friend.request] }
+        payload:
+          type: object
+          properties:
+            recipients:
+              type: array
+              items: { type: integer, format: int64 }
+            request: { $ref: '#/components/schemas/FR' }
+
+    E_sync:
+      type: object
+      properties:
+        type: { type: string, enum: [sync.notify] }
+        payload:
+          type: object
+          properties:
+            recipients:
+              type: array
+              items: { type: integer, format: int64 }
+
+    Event:
+      oneOf:
+        - { $ref: '#/components/schemas/E_auth_ok' }
+        - { $ref: '#/components/schemas/E_msg_new' }
+        - { $ref: '#/components/schemas/E_read' }
+        - { $ref: '#/components/schemas/E_fr' }
+        - { $ref: '#/components/schemas/E_sync' }
+
+paths:
+  /api/v1/system/ready:
+    get:
+      responses:
+        '200':
+          description: data=Ready
+          content: { application/json: { schema: { $ref: '#/components/schemas/Ready' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/auth/register:
+    post:
+      security: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/Reg' } } }
+      responses:
+        '200':
+          description: data=U
+          content: { application/json: { schema: { $ref: '#/components/schemas/U' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/auth/login:
+    post:
+      security: []
+      parameters:
+        - in: header
+          name: X-Device-Id
+          required: false
+          schema: { type: string }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/Log' } } }
+      responses:
+        '200':
+          description: data=A
+          content: { application/json: { schema: { $ref: '#/components/schemas/A' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/auth/refresh:
+    post:
+      security: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/Ref' } } }
+      responses:
+        '200':
+          description: data=A
+          content: { application/json: { schema: { $ref: '#/components/schemas/A' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/auth/sessions:
+    get:
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200':
+          description: data=S[]
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/S' }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/auth/logout:
+    post:
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/Lo' } } }
+      responses:
+        '200':
+          description: data=Status
+          content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/auth/logout-all:
+    post:
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200':
+          description: data=Status
+          content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/users/me:
+    get:
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200':
+          description: data=U
+          content: { application/json: { schema: { $ref: '#/components/schemas/U' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+    patch:
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/UP' } } }
+      responses:
+        '200':
+          description: data=U
+          content: { application/json: { schema: { $ref: '#/components/schemas/U' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/users:
+    get:
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200':
+          description: data=U[]
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/U' }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/friends:
+    get:
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200':
+          description: data=F[]
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/F' }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/friend-requests:
+    get:
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200':
+          description: data=FR[]
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/FR' }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+    post:
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/CFR' } } }
+      responses:
+        '200':
+          description: data=FR
+          content: { application/json: { schema: { $ref: '#/components/schemas/FR' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/friend-requests/{id}/approve:
+    post:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: data=Status
+          content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/friend-requests/{id}/reject:
+    post:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: data=Status
+          content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/conversations:
+    get:
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200':
+          description: data=C[]
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/C' }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/conversations/direct:
+    post:
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/CDC' } } }
+      responses:
+        '200':
+          description: data=C
+          content: { application/json: { schema: { $ref: '#/components/schemas/C' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/conversations/group:
+    post:
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/CGC' } } }
+      responses:
+        '200':
+          description: data=C
+          content: { application/json: { schema: { $ref: '#/components/schemas/C' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/conversations/{id}:
+    patch:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/RC' } } }
+      responses:
+        '200':
+          description: data=C
+          content: { application/json: { schema: { $ref: '#/components/schemas/C' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/conversations/{id}/members:
+    get:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: data=CM[]
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CM' }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+    post:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ACM' } } }
+      responses:
+        '200':
+          description: data=Status
+          content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/conversations/{id}/members/{userId}:
+    delete:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+        - in: path
+          name: userId
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: data=Status
+          content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/conversations/{id}/leave:
+    post:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: data=Status
+          content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/conversations/{id}/transfer-owner:
+    post:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/TO' } } }
+      responses:
+        '200':
+          description: data=Status
+          content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/conversations/{id}/pin:
+    post:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/PIN' } } }
+      responses:
+        '200':
+          description: data=Status
+          content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/conversations/{id}/messages:
+    get:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: cursor
+          required: false
+          schema: { type: string }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer }
+      responses:
+        '200':
+          description: data=M[]
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/M' }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+    post:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MSG' } } }
+      responses:
+        '200':
+          description: data=M
+          content: { application/json: { schema: { $ref: '#/components/schemas/M' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/conversations/{id}/read:
+    post:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: false
+        content: { application/json: { schema: { $ref: '#/components/schemas/MR' } } }
+      responses:
+        '200':
+          description: data=Status
+          content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/search:
+    get:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { in: query, name: q, required: false, schema: { type: string } }
+        - { in: query, name: scope, required: false, schema: { type: string, enum: [all, messages, conversations] } }
+        - { in: query, name: cursor, required: false, schema: { type: string } }
+        - { in: query, name: limit, required: false, schema: { type: integer } }
+        - { in: query, name: conversation_id, required: false, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: data=SR
+          content: { application/json: { schema: { $ref: '#/components/schemas/SR' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/sync/cursor:
+    get:
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200':
+          description: data=SC
+          content: { application/json: { schema: { $ref: '#/components/schemas/SC' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/sync/events:
+    get:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { in: query, name: cursor, required: false, schema: { type: integer, format: int64 } }
+        - { in: query, name: limit, required: false, schema: { type: integer } }
+      responses:
+        '200':
+          description: data=SER
+          content: { application/json: { schema: { $ref: '#/components/schemas/SER' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /ws:
+    get:
+      parameters:
+        - in: query
+          name: token
+          required: true
+          schema: { type: string }
+      responses:
+        '101':
+          description: websocket event=Event
+          content: { application/json: { schema: { $ref: '#/components/schemas/Event' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+      x-websocket: true

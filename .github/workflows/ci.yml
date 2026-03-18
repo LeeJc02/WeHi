@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install local runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mysql-client redis-tools lsof
+
+      - name: Frontend install
+        run: make frontend-install
+
+      - name: Go tests
+        run: make go-test
+
+      - name: Frontend lint
+        run: make frontend-lint
+
+      - name: Frontend build
+        run: make frontend-build
+
+      - name: Local smoke
+        run: |
+          make local-up
+          make local-smoke
+        env:
+          MYSQL_PORT: 3307
+          MYSQL_HOST: 127.0.0.1
+          FRONTEND_PORT: 5174
+          AUTH_PORT: 19081
+          API_PORT: 19082
+          REALTIME_PORT: 19083
+
+      - name: Cleanup local runtime
+        if: always()
+        run: |
+          make local-down || true
+          find .runtime -depth -delete 2>/dev/null || true
+          find frontend/dist -depth -delete 2>/dev/null || true
