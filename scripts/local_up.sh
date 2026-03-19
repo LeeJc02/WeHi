@@ -306,6 +306,9 @@ start_service() {
     RABBITMQ_URL="$RABBITMQ_URL" \
     ELASTICSEARCH_URL="$ELASTICSEARCH_URL" \
     JWT_SECRET="$JWT_SECRET" \
+    AUTH_SERVICE_URL="http://127.0.0.1:${AUTH_PORT}" \
+    API_SERVICE_URL="http://127.0.0.1:${API_PORT}" \
+    REALTIME_SERVICE_URL="http://127.0.0.1:${REALTIME_PORT}" \
     CORS_ORIGINS="$CORS_ORIGINS" \
     go build -o "$binary" "$path"
 
@@ -316,6 +319,9 @@ start_service() {
     RABBITMQ_URL="$RABBITMQ_URL" \
     ELASTICSEARCH_URL="$ELASTICSEARCH_URL" \
     JWT_SECRET="$JWT_SECRET" \
+    AUTH_SERVICE_URL="http://127.0.0.1:${AUTH_PORT}" \
+    API_SERVICE_URL="http://127.0.0.1:${API_PORT}" \
+    REALTIME_SERVICE_URL="http://127.0.0.1:${REALTIME_PORT}" \
     CORS_ORIGINS="$CORS_ORIGINS" \
     "$binary" >"$log_file" 2>&1 < /dev/null &
 

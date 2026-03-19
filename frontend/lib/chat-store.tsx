@@ -13,6 +13,7 @@ import { useWebSocket } from '@/hooks/use-websocket'
 import { useAuth } from './auth-context'
 import {
   approveFriendRequest as apiApproveFriendRequest,
+  addConversationMembers as apiAddConversationMembers,
   createDirectConversation,
   createGroupConversation as apiCreateGroupConversation,
   createFriendRequest as apiCreateFriendRequest,
@@ -21,10 +22,19 @@ import {
   getFriendRequests,
   getFriends,
   getMessages,
+  getSyncCursor,
+  getSyncEvents,
   getUsers,
+  leaveConversation as apiLeaveConversation,
   markAsRead as apiMarkAsRead,
+  recallMessage as apiRecallMessage,
+  removeConversationMember as apiRemoveConversationMember,
   rejectFriendRequest as apiRejectFriendRequest,
+  renameConversation as apiRenameConversation,
   sendMessage as apiSendMessage,
+  updateConversationSettings as apiUpdateConversationSettings,
+  updateFriendRemark as apiUpdateFriendRemark,
+  updateTypingStatus as apiUpdateTypingStatus,
 } from './api'
 import type {
   Conversation,
@@ -33,6 +43,7 @@ import type {
   FriendRequest,
   GroupRequest,
   Message,
+  SyncEvent,
   User,
 } from './types'
 
@@ -48,8 +59,24 @@ interface ChatStoreContextType {
   setCurrentConversation: (conversation: Conversation | null) => void
   loadConversations: () => Promise<void>
   loadMessages: (conversationId: number) => Promise<Message[]>
-  sendMessage: (content: string) => Promise<void>
+  sendMessage: (payload: {
+    content: string
+    messageType?: Message['message_type']
+    replyToMessageId?: number
+    attachment?: Message['attachment']
+    clientMsgId?: string
+    existingMessageId?: number
+  }) => Promise<void>
+  retryMessage: (messageId: number) => Promise<void>
+  recallMessage: (messageId: number) => Promise<void>
+  sendTyping: (conversationId: number, isTyping: boolean) => Promise<void>
+  typingUserIds: number[]
   markAsRead: (conversationId: number, seq?: number) => Promise<void>
+  updateConversationSettings: (conversationId: number, updates: Partial<Conversation>) => Promise<void>
+  renameConversation: (conversationId: number, name: string) => Promise<void>
+  addConversationMembers: (conversationId: number, memberIds: number[]) => Promise<void>
+  removeConversationMember: (conversationId: number, userId: number) => Promise<void>
+  leaveConversation: (conversationId: number) => Promise<void>
   friends: Friend[]
   friendRequests: FriendRequest[]
   groupRequests: GroupRequest[]
@@ -60,6 +87,7 @@ interface ChatStoreContextType {
   approveFriendRequest: (id: number) => Promise<void>
   rejectFriendRequest: (id: number) => Promise<void>
   sendFriendRequest: (userId: number, message?: string) => Promise<void>
+  updateFriendRemark: (friendId: number, remarkName: string) => Promise<void>
   startDirectChat: (userId: number) => Promise<void>
   createGroupChat: (name: string, memberIds: number[]) => Promise<void>
   searchQuery: string
@@ -74,6 +102,9 @@ function sortConversations(rows: Conversation[]) {
   return [...rows].sort((a, b) => {
     if (a.pinned !== b.pinned) {
       return a.pinned ? -1 : 1
+    }
+    if (a.pinned_at !== b.pinned_at) {
+      return new Date(b.pinned_at || 0).getTime() - new Date(a.pinned_at || 0).getTime()
     }
     return new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime()
   })
@@ -98,7 +129,7 @@ function resolveDirectName(conversation: Conversation, currentUserId?: number, m
   }
   return {
     ...conversation,
-    name: other.display_name || other.username || '私聊',
+    name: other.remark_name || other.display_name || other.username || '私聊',
   }
 }
 
@@ -113,13 +144,50 @@ function mergeConversation(previous: Conversation | undefined, incoming: Convers
   }
 }
 
+function messagePreview(message: Pick<Message, 'message_type' | 'content' | 'attachment' | 'recalled_at'>) {
+  if (message.recalled_at) {
+    return '[消息已撤回]'
+  }
+  if (message.message_type === 'image') {
+    return '[图片]'
+  }
+  if (message.message_type === 'file') {
+    return `[文件] ${message.attachment?.filename || message.content || ''}`.trim()
+  }
+  return message.content
+}
+
+function replaceMessage(rows: Message[], next: Message, fallbackId?: number) {
+  const replaced = rows.map((item) => {
+    if (item.id === next.id) {
+      return next
+    }
+    if (item.client_msg_id && item.client_msg_id === next.client_msg_id) {
+      return next
+    }
+    if (fallbackId !== undefined && item.id === fallbackId) {
+      return next
+    }
+    return item
+  })
+  if (replaced.some((item) => item.id === next.id)) {
+    return sortMessages(replaced)
+  }
+  return sortMessages([...replaced, next])
+}
+
 export function ChatStoreProvider({ children }: { children: ReactNode }) {
   const { user, isAuthenticated } = useAuth()
   const { isConnected, subscribe } = useWebSocket(isAuthenticated)
   const membersCacheRef = useRef<Record<number, ConversationMember[]>>({})
   const conversationsRef = useRef<Conversation[]>([])
+  const currentMessagesRef = useRef<Message[]>([])
   const currentConversationIdRef = useRef<number | null>(null)
   const currentUserIdRef = useRef<number | undefined>(undefined)
+  const syncCursorRef = useRef(0)
+  const syncReadyRef = useRef(false)
+  const syncReplayInFlightRef = useRef(false)
+  const syncReplayPendingRef = useRef(false)
   const [activeView, setActiveView] = useState<ActiveView>('chat')
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null)
@@ -131,10 +199,15 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
   const [allUsers, setAllUsers] = useState<User[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [typingUserIds, setTypingUserIds] = useState<number[]>([])
 
   useEffect(() => {
     conversationsRef.current = conversations
   }, [conversations])
+
+  useEffect(() => {
+    currentMessagesRef.current = currentMessages
+  }, [currentMessages])
 
   useEffect(() => {
     currentConversationIdRef.current = currentConversation?.id ?? null
@@ -143,6 +216,10 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     currentUserIdRef.current = user?.id
   }, [user?.id])
+
+  useEffect(() => {
+    setTypingUserIds([])
+  }, [currentConversation?.id])
 
   const cacheMembers = useCallback((conversationId: number, members: ConversationMember[]) => {
     membersCacheRef.current = {
@@ -258,37 +335,175 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
     )
   }, [updateConversationState])
 
-  const sendMessage = useCallback(async (content: string) => {
+  const sendMessage = useCallback(async (payload: {
+    content: string
+    messageType?: Message['message_type']
+    replyToMessageId?: number
+    attachment?: Message['attachment']
+    clientMsgId?: string
+    existingMessageId?: number
+  }) => {
     if (!currentConversation) {
       return
     }
-    const message = await apiSendMessage(currentConversation.id, {
-      content,
-      message_type: 'text',
-      client_msg_id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-    })
-    setCurrentMessages((previous) => {
-      if (previous.some((item) => item.id === message.id)) {
-        return previous
-      }
-      return sortMessages([...previous, message])
-    })
+    const clientMsgId = payload.clientMsgId ?? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    const replyTo = payload.replyToMessageId
+      ? currentMessagesRef.current.find((item) => item.id === payload.replyToMessageId)
+      : undefined
+    const optimisticMessage: Message = {
+      id: payload.existingMessageId ?? -Date.now(),
+      conversation_id: currentConversation.id,
+      seq: (currentMessagesRef.current.at(-1)?.seq ?? 0) + 1,
+      sender_id: user?.id ?? 0,
+      message_type: payload.messageType ?? 'text',
+      content: payload.content,
+      reply_to_message_id: payload.replyToMessageId,
+      reply_to: replyTo
+        ? {
+            id: replyTo.id,
+            sender_id: replyTo.sender_id,
+            message_type: replyTo.message_type,
+            content: replyTo.content,
+            attachment: replyTo.attachment,
+            recalled_at: replyTo.recalled_at,
+          }
+        : undefined,
+      attachment: payload.attachment,
+      client_msg_id: clientMsgId,
+      status: 'sending',
+      delivery_status: 'sending',
+      created_at: new Date().toISOString(),
+      recalled_at: '',
+    }
+
+    setCurrentMessages((previous) => replaceMessage(previous, optimisticMessage, payload.existingMessageId))
     updateConversationState((rows) => {
       const nextConversation = rows.find((row) => row.id === currentConversation.id)
       const merged = {
         ...(nextConversation ?? currentConversation),
-        last_message_at: message.created_at,
-        last_message_preview: message.content,
-        last_message_sender: message.sender_id,
-        last_message_seq: message.seq,
-        last_message_type: message.message_type,
+        last_message_at: optimisticMessage.created_at,
+        last_message_preview: messagePreview(optimisticMessage),
+        last_message_sender: optimisticMessage.sender_id,
+        last_message_seq: optimisticMessage.seq,
+        last_message_type: optimisticMessage.message_type,
       }
-      return [
-        ...rows.filter((row) => row.id !== currentConversation.id),
-        merged,
-      ]
+      return [...rows.filter((row) => row.id !== currentConversation.id), merged]
     })
-  }, [currentConversation, updateConversationState])
+
+    try {
+      const message = await apiSendMessage(currentConversation.id, {
+        content: payload.content,
+        message_type: payload.messageType ?? 'text',
+        client_msg_id: clientMsgId,
+        reply_to_message_id: payload.replyToMessageId,
+        attachment: payload.attachment,
+      })
+      setCurrentMessages((previous) => replaceMessage(previous, message, optimisticMessage.id))
+      updateConversationState((rows) => {
+        const nextConversation = rows.find((row) => row.id === currentConversation.id)
+        const merged = {
+          ...(nextConversation ?? currentConversation),
+          last_message_at: message.created_at,
+          last_message_preview: messagePreview(message),
+          last_message_sender: message.sender_id,
+          last_message_seq: message.seq,
+          last_message_type: message.message_type,
+        }
+        return [...rows.filter((row) => row.id !== currentConversation.id), merged]
+      })
+    } catch (error) {
+      setCurrentMessages((previous) =>
+        previous.map((item) =>
+          item.client_msg_id === clientMsgId
+            ? { ...item, status: 'failed', delivery_status: 'failed' }
+            : item,
+        ),
+      )
+      throw error
+    }
+  }, [currentConversation, updateConversationState, user?.id])
+
+  const retryMessage = useCallback(async (messageId: number) => {
+    const target = currentMessagesRef.current.find((item) => item.id === messageId)
+    if (!target || target.status !== 'failed') {
+      return
+    }
+    await sendMessage({
+      content: target.content,
+      messageType: target.message_type,
+      replyToMessageId: target.reply_to_message_id,
+      attachment: target.attachment,
+      clientMsgId: target.client_msg_id,
+      existingMessageId: target.id,
+    })
+  }, [sendMessage])
+
+  const recallMessage = useCallback(async (messageId: number) => {
+    await apiRecallMessage(messageId)
+  }, [])
+
+  const sendTyping = useCallback(async (conversationId: number, isTyping: boolean) => {
+    await apiUpdateTypingStatus(conversationId, { is_typing: isTyping })
+  }, [])
+
+  const updateConversationSettings = useCallback(async (conversationId: number, updates: Partial<Conversation>) => {
+    const conversation = await apiUpdateConversationSettings(conversationId, {
+      pinned: updates.pinned,
+      is_muted: updates.is_muted,
+      draft: updates.draft,
+      announcement: updates.announcement,
+    })
+    updateConversationState((rows) => [
+      ...rows.filter((row) => row.id !== conversation.id),
+      mergeConversation(rows.find((row) => row.id === conversation.id), conversation),
+    ])
+    setCurrentConversation((current) => {
+      if (!current || current.id !== conversation.id) {
+        return current
+      }
+      return mergeConversation(current, conversation)
+    })
+  }, [updateConversationState])
+
+  const renameConversation = useCallback(async (conversationId: number, name: string) => {
+    const conversation = await apiRenameConversation(conversationId, name)
+    updateConversationState((rows) => [
+      ...rows.filter((row) => row.id !== conversation.id),
+      mergeConversation(rows.find((row) => row.id === conversation.id), conversation),
+    ])
+  }, [updateConversationState])
+
+  const addConversationMembers = useCallback(async (conversationId: number, memberIds: number[]) => {
+    await apiAddConversationMembers(conversationId, memberIds)
+    const members = await loadConversationMembers(conversationId, true)
+    setCurrentMembers((current) => (currentConversationIdRef.current === conversationId ? members : current))
+    await loadConversations()
+  }, [loadConversationMembers, loadConversations])
+
+  const removeConversationMember = useCallback(async (conversationId: number, userId: number) => {
+    await apiRemoveConversationMember(conversationId, userId)
+    const isCurrentConversation = currentConversationIdRef.current === conversationId
+    if (isCurrentConversation && currentUserIdRef.current === userId) {
+      setCurrentConversation(null)
+      setCurrentMessages([])
+      setCurrentMembers([])
+    } else {
+      const members = await loadConversationMembers(conversationId, true)
+      if (isCurrentConversation) {
+        setCurrentMembers(members)
+      }
+    }
+    await loadConversations()
+  }, [loadConversationMembers, loadConversations])
+
+  const leaveConversation = useCallback(async (conversationId: number) => {
+    await apiLeaveConversation(conversationId)
+    setConversations((previous) => previous.filter((item) => item.id !== conversationId))
+    setCurrentConversation((current) => (current?.id === conversationId ? null : current))
+    setCurrentMessages((previous) => (currentConversationIdRef.current === conversationId ? [] : previous))
+    setCurrentMembers((previous) => (currentConversationIdRef.current === conversationId ? [] : previous))
+    delete membersCacheRef.current[conversationId]
+  }, [])
 
   const loadFriends = useCallback(async () => {
     if (!isAuthenticated) {
@@ -327,6 +542,11 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
     await loadFriendRequests()
   }, [loadFriendRequests])
 
+  const updateFriendRemark = useCallback(async (friendId: number, remarkName: string) => {
+    await apiUpdateFriendRemark(friendId, { remark_name: remarkName })
+    await Promise.all([loadFriends(), loadConversations()])
+  }, [loadConversations, loadFriends])
+
   const startDirectChat = useCallback(async (userId: number) => {
     const conversation = await createDirectConversation({ target_user_id: userId })
     const members = await loadConversationMembers(conversation.id, true)
@@ -352,6 +572,197 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
     setActiveView('chat')
   }, [loadConversationMembers, updateConversationState])
 
+  const applyIncomingEvent = useCallback((event: { type: string; payload: any }) => {
+    const currentUserId = currentUserIdRef.current
+    switch (event.type) {
+      case 'message.accepted':
+        if (currentConversationIdRef.current === event.payload.conversation_id) {
+          setCurrentMessages((previous) =>
+            previous.map((item) =>
+              item.client_msg_id === event.payload.client_msg_id && item.delivery_status === 'sending'
+                ? { ...item, status: 'sent', delivery_status: 'sent' }
+                : item,
+            ),
+          )
+        }
+        break
+      case 'message.persisted':
+      case 'message.new': {
+        const cachedMembers = getCachedMembers(event.payload.conversation.id)
+        const nextConversation = resolveDirectName(
+          mergeConversation(
+            conversationsRef.current.find((item) => item.id === event.payload.conversation.id),
+            event.payload.conversation,
+          ),
+          currentUserId,
+          cachedMembers,
+        )
+
+        updateConversationState((rows) => [
+          ...rows.filter((item) => item.id !== nextConversation.id),
+          nextConversation,
+        ])
+
+        if (currentConversationIdRef.current === event.payload.conversation.id) {
+          setCurrentMessages((previous) => {
+            if (previous.some((item) => item.id === event.payload.message.id)) {
+              return previous
+            }
+            return replaceMessage(previous, event.payload.message)
+          })
+          if (event.payload.message.sender_id !== currentUserId) {
+            void markAsRead(event.payload.conversation.id, event.payload.message.seq)
+          }
+        }
+        break
+      }
+      case 'message.delivered':
+        if (currentConversationIdRef.current === event.payload.conversation_id) {
+          setCurrentMessages((previous) =>
+            previous.map((item) =>
+              item.id === event.payload.message_id || item.client_msg_id === event.payload.client_msg_id
+                ? {
+                    ...item,
+                    status: event.payload.delivery_status,
+                    delivery_status: event.payload.delivery_status,
+                  }
+                : item,
+            ),
+          )
+        }
+        break
+      case 'message.read':
+      case 'conversation.read':
+        if (currentConversationIdRef.current === event.payload.conversation_id) {
+          setCurrentMembers((previous) =>
+            previous.map((member) =>
+              member.user_id === event.payload.reader_id
+                ? { ...member, last_read_seq: event.payload.last_read_seq }
+                : member,
+            ),
+          )
+          if (event.payload.reader_id !== currentUserId) {
+            setCurrentMessages((previous) =>
+              previous.map((item) =>
+                item.sender_id === currentUserId && item.seq <= event.payload.last_read_seq
+                  ? { ...item, status: 'read', delivery_status: 'read' }
+                  : item,
+              ),
+            )
+          }
+        }
+        break
+      case 'typing.updated':
+        if (currentConversationIdRef.current === event.payload.conversation_id) {
+          setTypingUserIds((previous) => {
+            const exists = previous.includes(event.payload.user_id)
+            if (event.payload.is_typing) {
+              return exists ? previous : [...previous, event.payload.user_id]
+            }
+            return previous.filter((item) => item !== event.payload.user_id)
+          })
+        }
+        break
+      case 'message.recalled':
+        updateConversationState((rows) =>
+          rows.map((row) =>
+            row.id === event.payload.conversation_id
+              ? { ...row, last_message_preview: '[消息已撤回]' }
+              : row,
+          ),
+        )
+        if (currentConversationIdRef.current === event.payload.conversation_id) {
+          setCurrentMessages((previous) =>
+            previous.map((item) =>
+              item.id === event.payload.message_id
+                ? {
+                    ...item,
+                    recalled_at: event.payload.recalled_at,
+                    status: item.status === 'failed' ? item.status : 'read',
+                    delivery_status: item.delivery_status === 'failed' ? item.delivery_status : 'read',
+                  }
+                : item,
+            ),
+          )
+        }
+        break
+      case 'conversation.updated':
+        updateConversationState((rows) => [
+          ...rows.filter((item) => item.id !== event.payload.conversation.id),
+          event.payload.conversation,
+        ])
+        break
+      case 'conversation.removed':
+        setConversations((previous) => previous.filter((item) => item.id !== event.payload.conversation_id))
+        setCurrentConversation((current) => (current?.id === event.payload.conversation_id ? null : current))
+        if (currentConversationIdRef.current === event.payload.conversation_id) {
+          setCurrentMessages([])
+          setCurrentMembers([])
+        }
+        delete membersCacheRef.current[event.payload.conversation_id]
+        break
+      case 'member.joined':
+      case 'member.left':
+        if (currentConversationIdRef.current === event.payload.conversation_id) {
+          void loadConversationMembers(event.payload.conversation_id, true).then((members) => {
+            if (currentConversationIdRef.current === event.payload.conversation_id) {
+              setCurrentMembers(members)
+            }
+          })
+        }
+        void loadConversations()
+        break
+      case 'friend.request':
+        setFriendRequests((previous) => {
+          const exists = previous.some((item) => item.id === event.payload.request.id)
+          if (exists) {
+            return previous.map((item) =>
+              item.id === event.payload.request.id ? event.payload.request : item,
+            )
+          }
+          return [event.payload.request, ...previous]
+        })
+        break
+      default:
+        break
+    }
+  }, [getCachedMembers, loadConversationMembers, loadConversations, markAsRead, updateConversationState])
+
+  const replaySyncEvents = useCallback(async () => {
+    if (!isAuthenticated || !syncReadyRef.current) {
+      return
+    }
+    if (syncReplayInFlightRef.current) {
+      syncReplayPendingRef.current = true
+      return
+    }
+    syncReplayInFlightRef.current = true
+    try {
+      let cursor = syncCursorRef.current
+      while (true) {
+        const result = await getSyncEvents(cursor, 50)
+        for (const event of result.events) {
+          applyIncomingEvent({
+            type: event.event_type || event.type,
+            payload: event.payload,
+          })
+          cursor = event.cursor
+        }
+        syncCursorRef.current = result.next_cursor || result.current_cursor || cursor
+        if (!result.has_more || result.events.length === 0) {
+          break
+        }
+        cursor = result.next_cursor
+      }
+    } finally {
+      syncReplayInFlightRef.current = false
+      if (syncReplayPendingRef.current) {
+        syncReplayPendingRef.current = false
+        void replaySyncEvents()
+      }
+    }
+  }, [applyIncomingEvent, isAuthenticated])
+
   useEffect(() => {
     if (!isAuthenticated) {
       setConversations([])
@@ -362,15 +773,24 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
       setFriendRequests([])
       setGroupRequests([])
       setAllUsers([])
+      syncCursorRef.current = 0
+      syncReadyRef.current = false
+      syncReplayInFlightRef.current = false
+      syncReplayPendingRef.current = false
       membersCacheRef.current = {}
       return
     }
 
-    void Promise.all([
-      loadConversations(),
-      loadFriends(),
-      loadFriendRequests(),
-    ])
+    void (async () => {
+      await Promise.all([
+        loadConversations(),
+        loadFriends(),
+        loadFriendRequests(),
+      ])
+      const cursor = await getSyncCursor()
+      syncCursorRef.current = cursor.cursor
+      syncReadyRef.current = true
+    })()
   }, [isAuthenticated, loadConversations, loadFriendRequests, loadFriends])
 
   useEffect(() => {
@@ -407,76 +827,25 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
     }
 
     return subscribe((event) => {
-      const currentUserId = currentUserIdRef.current
-      switch (event.type) {
-        case 'message.new': {
-          const cachedMembers = getCachedMembers(event.payload.conversation.id)
-          const nextConversation = resolveDirectName(
-            mergeConversation(
-              conversationsRef.current.find((item) => item.id === event.payload.conversation.id),
-              event.payload.conversation,
-            ),
-            currentUserId,
-            cachedMembers,
-          )
-
-          updateConversationState((rows) => [
-            ...rows.filter((item) => item.id !== nextConversation.id),
-            nextConversation,
-          ])
-
-          if (currentConversationIdRef.current === event.payload.conversation.id) {
-            setCurrentMessages((previous) => {
-              if (previous.some((item) => item.id === event.payload.message.id)) {
-                return previous
-              }
-              return sortMessages([...previous, event.payload.message])
-            })
-            if (event.payload.message.sender_id !== currentUserId) {
-              void markAsRead(event.payload.conversation.id, event.payload.message.seq)
-            }
-          }
-          break
-        }
-        case 'conversation.read':
-          if (currentConversationIdRef.current === event.payload.conversation_id) {
-            setCurrentMembers((previous) =>
-              previous.map((member) =>
-                member.user_id === event.payload.reader_id
-                  ? { ...member, last_read_seq: event.payload.last_read_seq }
-                  : member,
-              ),
-            )
-          }
-          break
-        case 'friend.request':
-          setFriendRequests((previous) => {
-            const exists = previous.some((item) => item.id === event.payload.request.id)
-            if (exists) {
-              return previous.map((item) =>
-                item.id === event.payload.request.id ? event.payload.request : item,
-              )
-            }
-            return [event.payload.request, ...previous]
-          })
-          break
-        case 'sync.notify':
-          void Promise.all([loadConversations(), loadFriends(), loadFriendRequests()])
-          break
-        default:
-          break
+      if (event.type === 'sync.notify') {
+        void replaySyncEvents()
+        return
       }
+      applyIncomingEvent(event)
     })
   }, [
-    getCachedMembers,
+    applyIncomingEvent,
     isAuthenticated,
-    loadConversations,
-    loadFriendRequests,
-    loadFriends,
-    markAsRead,
+    replaySyncEvents,
     subscribe,
-    updateConversationState,
   ])
+
+  useEffect(() => {
+    if (!isConnected || !syncReadyRef.current) {
+      return
+    }
+    void replaySyncEvents()
+  }, [isConnected, replaySyncEvents])
 
   return (
     <ChatStoreContext.Provider
@@ -491,7 +860,16 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
         loadConversations,
         loadMessages,
         sendMessage,
+        retryMessage,
+        recallMessage,
+        sendTyping,
+        typingUserIds,
         markAsRead,
+        updateConversationSettings,
+        renameConversation,
+        addConversationMembers,
+        removeConversationMember,
+        leaveConversation,
         friends,
         friendRequests,
         groupRequests,
@@ -502,6 +880,7 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
         approveFriendRequest,
         rejectFriendRequest,
         sendFriendRequest,
+        updateFriendRemark,
         startDirectChat,
         createGroupChat,
         searchQuery,

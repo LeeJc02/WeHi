@@ -21,6 +21,13 @@ import type {
   StatusResponse,
   SyncCursor,
   SyncEventResponse,
+  TypingStatusRequest,
+  UploadCompleteRequest,
+  UploadCompleteResponse,
+  UploadPresignRequest,
+  UploadPresignResponse,
+  UpdateConversationSettingsRequest,
+  UpdateFriendRemarkRequest,
   UpdateProfileRequest,
   User,
 } from './types'
@@ -242,6 +249,16 @@ export async function logoutAll() {
   return result
 }
 
+export function logoutOthers() {
+  return request<StatusResponse>(
+    AUTH_BASE_URL,
+    '/api/v1/auth/logout-others',
+    { method: 'POST' },
+    true,
+    false,
+  )
+}
+
 export function getCurrentUser() {
   return request<User>(API_BASE_URL, '/api/v1/users/me')
 }
@@ -284,6 +301,13 @@ export function createFriendRequest(data: CreateFriendRequestBody) {
   })
 }
 
+export function updateFriendRemark(id: number, data: UpdateFriendRemarkRequest) {
+  return request<StatusResponse>(API_BASE_URL, `/api/v1/friends/${id}/remark`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+}
+
 export function approveFriendRequest(id: number) {
   return request<StatusResponse>(API_BASE_URL, `/api/v1/friend-requests/${id}/approve`, {
     method: 'POST',
@@ -314,14 +338,34 @@ export function createGroupConversation(data: CreateGroupConversationRequest) {
   })
 }
 
+export function renameConversation(id: number, name: string) {
+  return request<Conversation>(API_BASE_URL, `/api/v1/conversations/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  })
+}
+
 export function getConversationMembers(id: number) {
   return request<ConversationMember[]>(API_BASE_URL, `/api/v1/conversations/${id}/members`)
 }
 
-export function pinConversation(id: number, pinned: boolean) {
-  return request<StatusResponse>(API_BASE_URL, `/api/v1/conversations/${id}/pin`, {
+export function addConversationMembers(id: number, memberIds: number[]) {
+  return request<StatusResponse>(API_BASE_URL, `/api/v1/conversations/${id}/members`, {
     method: 'POST',
-    body: JSON.stringify({ pinned }),
+    body: JSON.stringify({ member_ids: memberIds }),
+  })
+}
+
+export function removeConversationMember(id: number, userId: number) {
+  return request<StatusResponse>(API_BASE_URL, `/api/v1/conversations/${id}/members/${userId}`, {
+    method: 'DELETE',
+  })
+}
+
+export function updateConversationSettings(id: number, data: UpdateConversationSettingsRequest) {
+  return request<Conversation>(API_BASE_URL, `/api/v1/conversations/${id}/settings`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
   })
 }
 
@@ -343,8 +387,50 @@ export function sendMessage(conversationId: number, data: SendMessageRequest) {
   })
 }
 
+export function recallMessage(messageId: number) {
+  return request<StatusResponse>(API_BASE_URL, `/api/v1/messages/${messageId}/recall`, {
+    method: 'POST',
+  })
+}
+
+export function presignUpload(data: UploadPresignRequest) {
+  return request<UploadPresignResponse>(API_BASE_URL, '/api/v1/uploads/presign', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function uploadObject(uploadPath: string, file: File, headers: Record<string, string> = {}) {
+  const response = await fetch(`${API_BASE_URL}${uploadPath}`, {
+    method: 'PUT',
+    headers: {
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      'Content-Type': file.type || 'application/octet-stream',
+      ...headers,
+    },
+    body: file,
+  })
+  if (!response.ok) {
+    throw new ApiRequestError('文件上传失败', response.status)
+  }
+}
+
+export function completeUpload(data: UploadCompleteRequest) {
+  return request<UploadCompleteResponse>(API_BASE_URL, '/api/v1/uploads/complete', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
 export function markAsRead(conversationId: number, data: MarkReadRequest = {}) {
   return request<StatusResponse>(API_BASE_URL, `/api/v1/conversations/${conversationId}/read`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export function updateTypingStatus(conversationId: number, data: TypingStatusRequest) {
+  return request<StatusResponse>(API_BASE_URL, `/api/v1/conversations/${conversationId}/typing`, {
     method: 'POST',
     body: JSON.stringify(data),
   })

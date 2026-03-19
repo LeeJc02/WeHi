@@ -5,6 +5,7 @@ export interface User {
   id: number
   username: string
   display_name: string
+  avatar_url: string
 }
 
 export interface ApiEnvelope<T> {
@@ -21,6 +22,130 @@ export interface AuthResponse {
   user: User
 }
 
+export interface AdminProfile {
+  id: number
+  username: string
+  must_change_password: boolean
+}
+
+export interface AdminAuthResponse {
+  access_token: string
+  admin: AdminProfile
+}
+
+export interface AIProviderConfig {
+  enabled: boolean
+  api_key: string
+  base_url: string
+  models: string[]
+}
+
+export interface AIConfig {
+  bot: {
+    enabled: boolean
+    username: string
+    display_name: string
+    system_prompt: string
+    default_provider: string
+    default_model: string
+    context_messages: number
+    async_timeout_seconds: number
+  }
+  providers: {
+    zhipu: AIProviderConfig
+    openai: AIProviderConfig
+    anthropic: AIProviderConfig
+  }
+  audit: {
+    enabled: boolean
+    retention_days: number
+  }
+}
+
+export interface MonitorServiceStatus {
+  name: string
+  healthy: boolean
+  status: string
+  error?: string
+  checked_at: string
+}
+
+export interface MonitorOverview {
+  services: MonitorServiceStatus[]
+  total_requests: number
+  client_errors: number
+  server_errors: number
+  average_latency_ms: number
+  websocket_connections: number
+  ai_retry_pending: number
+  ai_retry_completed: number
+  ai_retry_exhausted: number
+  snapshot_at: string
+}
+
+export interface MonitorPoint {
+  timestamp: string
+  total_requests: number
+  client_errors: number
+  server_errors: number
+  average_latency_ms: number
+  websocket_connections: number
+  ai_retry_pending: number
+  ai_retry_completed: number
+  ai_retry_exhausted: number
+}
+
+export interface MonitorTimeseries {
+  points: MonitorPoint[]
+}
+
+export interface MessageJourneyStage {
+  name: string
+  occurred_at: string
+  recipient_id: number
+  note: string
+}
+
+export interface MessageJourney {
+  message_id: number
+  conversation_id: number
+  client_msg_id: string
+  sender_id: number
+  message_type: string
+  delivery_status: string
+  created_at: string
+  recalled_at: string
+  stages: MessageJourneyStage[]
+}
+
+export interface MessageLookupResult {
+  message_id: number
+  conversation_id: number
+  sender_id: number
+  client_msg_id: string
+}
+
+export interface ConversationConsistencyMember {
+  user_id: number
+  username: string
+  display_name: string
+  avatar_url: string
+  role: string
+  last_read_seq: number
+  unread_count: number
+  current_cursor: number
+  online: boolean
+}
+
+export interface ConversationConsistency {
+  conversation_id: number
+  last_message_seq: number
+  last_message_at: string
+  online_count: number
+  current_event_lag: number
+  members: ConversationConsistencyMember[]
+}
+
 // 会话信息
 export interface Session {
   id: string
@@ -31,8 +156,48 @@ export interface Session {
   current: boolean
 }
 
-// 好友（与User相同结构）
-export type Friend = User
+export interface Friend extends User {
+  remark_name: string
+  is_ai_bot?: boolean
+}
+
+export interface AIAuditLog {
+  id: number
+  user_id: number
+  conversation_id: number
+  request_id: string
+  provider: string
+  model: string
+  status: string
+  duration_ms: number
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  input_preview: string
+  output_preview: string
+  error_code: string
+  error_message: string
+  created_at: string
+}
+
+export interface AIAuditLogDetail extends AIAuditLog {
+  request_payload_json: string
+  response_payload_json: string
+}
+
+export interface AIRetryJob {
+  id: number
+  user_id: number
+  conversation_id: number
+  status: string
+  attempt_count: number
+  next_attempt_at: string
+  last_error: string
+  created_at: string
+  updated_at: string
+}
+
+export interface AIRetryJobDetail extends AIRetryJob {}
 
 // 好友请求
 export interface FriendRequest {
@@ -63,9 +228,13 @@ export interface Conversation {
   id: number
   type: 'direct' | 'group'
   name: string
+  announcement: string
   creator_id: number
   member_count: number
   pinned: boolean
+  pinned_at: string
+  is_muted: boolean
+  draft: string
   last_read_seq: number
   unread_count: number
   last_message_seq: number
@@ -80,6 +249,8 @@ export interface ConversationMember {
   user_id: number
   username: string
   display_name: string
+  avatar_url: string
+  remark_name: string
   role: 'owner' | 'admin' | 'member'
   last_read_seq: number
   joined_at: string
@@ -94,9 +265,31 @@ export interface Message {
   sender_id: number
   message_type: 'text' | 'image' | 'file' | 'system'
   content: string
+  reply_to_message_id?: number
+  reply_to?: MessageReference
+  attachment?: Attachment
   client_msg_id: string
   status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed'
+  delivery_status: 'sending' | 'sent' | 'delivered' | 'read' | 'failed'
   created_at: string
+  recalled_at: string
+}
+
+export interface Attachment {
+  object_key: string
+  url: string
+  filename: string
+  content_type: string
+  size_bytes: number
+}
+
+export interface MessageReference {
+  id: number
+  sender_id: number
+  message_type: 'text' | 'image' | 'file' | 'system'
+  content: string
+  attachment?: Attachment
+  recalled_at: string
 }
 
 // 搜索结果 - 会话
@@ -132,6 +325,9 @@ export interface SyncCursor {
 
 // 同步事件
 export interface SyncEvent {
+  event_id: number
+  event_type: string
+  aggregate_id: string
   cursor: number
   type: string
   payload: Record<string, unknown>
@@ -157,7 +353,7 @@ export interface WsAuthOkEvent {
 }
 
 export interface WsMessageNewEvent {
-  type: 'message.new'
+  type: 'message.persisted' | 'message.new'
   payload: {
     recipients: number[]
     conversation_id: number
@@ -167,12 +363,44 @@ export interface WsMessageNewEvent {
 }
 
 export interface WsConversationReadEvent {
-  type: 'conversation.read'
+  type: 'message.read' | 'conversation.read'
   payload: {
     recipients: number[]
     conversation_id: number
     reader_id: number
     last_read_seq: number
+  }
+}
+
+export interface WsMessageAcceptedEvent {
+  type: 'message.accepted'
+  payload: {
+    recipients: number[]
+    conversation_id: number
+    client_msg_id: string
+    accepted_at: string
+  }
+}
+
+export interface WsMessageDeliveredEvent {
+  type: 'message.delivered'
+  payload: {
+    recipients: number[]
+    conversation_id: number
+    message_id: number
+    client_msg_id: string
+    delivery_status: Message['delivery_status']
+    updated_at: string
+  }
+}
+
+export interface WsTypingUpdatedEvent {
+  type: 'typing.updated'
+  payload: {
+    recipients: number[]
+    conversation_id: number
+    user_id: number
+    is_typing: boolean
   }
 }
 
@@ -191,10 +419,24 @@ export interface WsSyncNotifyEvent {
   }
 }
 
+export interface WsMessageRecalledEvent {
+  type: 'message.recalled'
+  payload: {
+    recipients: number[]
+    conversation_id: number
+    message_id: number
+    recalled_at: string
+  }
+}
+
 export type WsEvent =
   | WsAuthOkEvent
+  | WsMessageAcceptedEvent
   | WsMessageNewEvent
+  | WsMessageDeliveredEvent
+  | WsMessageRecalledEvent
   | WsConversationReadEvent
+  | WsTypingUpdatedEvent
   | WsFriendRequestEvent
   | WsSyncNotifyEvent
 
@@ -211,6 +453,16 @@ export interface LoginRequest {
   password: string
 }
 
+export interface AdminLoginRequest {
+  username: string
+  password: string
+}
+
+export interface AdminChangePasswordRequest {
+  current_password: string
+  new_password: string
+}
+
 export interface RefreshRequest {
   refresh_token: string
 }
@@ -221,11 +473,16 @@ export interface LogoutRequest {
 
 export interface UpdateProfileRequest {
   display_name: string
+  avatar_url?: string
 }
 
 export interface CreateFriendRequestBody {
   addressee_id: number
   message?: string
+}
+
+export interface UpdateFriendRemarkRequest {
+  remark_name: string
 }
 
 export interface CreateDirectConversationRequest {
@@ -249,18 +506,52 @@ export interface TransferOwnerRequest {
   user_id: number
 }
 
-export interface PinConversationRequest {
-  pinned: boolean
+export interface UpdateConversationSettingsRequest {
+  pinned?: boolean
+  is_muted?: boolean
+  draft?: string
+  announcement?: string
 }
 
 export interface SendMessageRequest {
   message_type?: string
   content: string
   client_msg_id?: string
+  reply_to_message_id?: number
+  attachment?: Attachment
+}
+
+export interface UploadPresignRequest {
+  filename: string
+  content_type: string
+  size_bytes: number
+}
+
+export interface UploadPresignResponse {
+  object_key: string
+  upload_path: string
+  method: string
+  headers: Record<string, string>
+  public_url: string
+}
+
+export interface UploadCompleteRequest {
+  object_key: string
+  filename: string
+  content_type: string
+  size_bytes: number
+}
+
+export interface UploadCompleteResponse {
+  attachment: Attachment
 }
 
 export interface MarkReadRequest {
   seq?: number
+}
+
+export interface TypingStatusRequest {
+  is_typing: boolean
 }
 
 // ============ API 响应类型 ============

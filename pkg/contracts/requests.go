@@ -13,6 +13,7 @@ type LoginRequest struct {
 
 type UpdateProfileRequest struct {
 	DisplayName string `json:"display_name"`
+	AvatarURL   string `json:"avatar_url"`
 }
 
 type RefreshRequest struct {
@@ -26,6 +27,10 @@ type LogoutRequest struct {
 type CreateFriendRequestRequest struct {
 	AddresseeID uint64 `json:"addressee_id"`
 	Message     string `json:"message"`
+}
+
+type UpdateFriendRemarkRequest struct {
+	RemarkName string `json:"remark_name"`
 }
 
 type CreateDirectConversationRequest struct {
@@ -49,16 +54,25 @@ type TransferOwnershipRequest struct {
 	UserID uint64 `json:"user_id"`
 }
 
-type SetConversationPinRequest struct {
-	Pinned bool `json:"pinned"`
+type UpdateConversationSettingsRequest struct {
+	Pinned       *bool   `json:"pinned"`
+	IsMuted      *bool   `json:"is_muted"`
+	Draft        *string `json:"draft"`
+	Announcement *string `json:"announcement"`
 }
 
 type SendMessageRequest struct {
-	MessageType string `json:"message_type"`
-	Content     string `json:"content"`
-	ClientMsgID string `json:"client_msg_id"`
+	MessageType      string         `json:"message_type"`
+	Content          string         `json:"content"`
+	ClientMsgID      string         `json:"client_msg_id"`
+	ReplyToMessageID *uint64        `json:"reply_to_message_id"`
+	Attachment       *AttachmentDTO `json:"attachment"`
 }
 
 type MarkReadRequest struct {
 	Seq uint64 `json:"seq"`
+}
+
+type TypingStatusRequest struct {
+	IsTyping bool `json:"is_typing"`
 }

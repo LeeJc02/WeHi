@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -18,6 +19,11 @@ type ConversationService struct {
 func (s *ConversationService) EnsureDirectConversation(userID, targetID uint64) (*contracts.ConversationDTO, error) {
 	if userID == targetID {
 		return nil, apperr.BadRequest("INVALID_DIRECT_CONVERSATION_TARGET", "cannot create direct conversation with yourself")
+	}
+	if s.deps.ai != nil {
+		if err := s.deps.ai.EnsureBotForUser(userID); err != nil {
+			return nil, err
+		}
 	}
 	conversation, _, err := s.deps.repo.EnsureDirectConversation(userID, targetID)
 	if err != nil {
@@ -39,6 +45,11 @@ func (s *ConversationService) CreateGroupConversation(creatorID uint64, name str
 	}
 	memberIDs = append(memberIDs, creatorID)
 	memberIDs = uniqueIDs(memberIDs)
+	if hasBot, err := s.containsBotMember(memberIDs); err != nil {
+		return nil, err
+	} else if hasBot {
+		return nil, apperr.BadRequest("BOT_GROUP_UNSUPPORTED", "AI Bot cannot be added to a group conversation")
+	}
 	if len(memberIDs) < 3 {
 		return nil, apperr.BadRequest("GROUP_MEMBER_COUNT_INVALID", "group requires at least three distinct members")
 	}
@@ -82,6 +93,11 @@ func (s *ConversationService) RenameConversation(userID, conversationID uint64, 
 }
 
 func (s *ConversationService) ListConversations(userID uint64) ([]contracts.ConversationDTO, error) {
+	if s.deps.ai != nil {
+		if err := s.deps.ai.EnsureBotForUser(userID); err != nil {
+			return nil, err
+		}
+	}
 	rows, err := s.deps.repo.ListConversations(userID)
 	if err != nil {
 		return nil, err
@@ -99,9 +115,13 @@ func (s *ConversationService) ListConversations(userID uint64) ([]contracts.Conv
 			ID:                 row.ID,
 			Type:               row.Type,
 			Name:               name,
+			Announcement:       row.Announcement,
 			CreatorID:          row.CreatorID,
 			MemberCount:        row.MemberCount,
 			Pinned:             row.Pinned,
+			PinnedAt:           formatTimePtr(row.PinnedAt),
+			IsMuted:            row.IsMuted,
+			Draft:              row.Draft,
 			LastReadSeq:        row.LastReadSeq,
 			UnreadCount:        row.UnreadCount,
 			LastMessageSeq:     row.LastMessageSeq,
@@ -131,9 +151,13 @@ func (s *ConversationService) GetConversationSummary(userID, conversationID uint
 			ID:                 row.ID,
 			Type:               row.Type,
 			Name:               name,
+			Announcement:       row.Announcement,
 			CreatorID:          row.CreatorID,
 			MemberCount:        row.MemberCount,
 			Pinned:             row.Pinned,
+			PinnedAt:           formatTimePtr(row.PinnedAt),
+			IsMuted:            row.IsMuted,
+			Draft:              row.Draft,
 			LastReadSeq:        row.LastReadSeq,
 			UnreadCount:        row.UnreadCount,
 			LastMessageSeq:     row.LastMessageSeq,
@@ -150,7 +174,7 @@ func (s *ConversationService) ListConversationMembers(userID, conversationID uin
 	if _, err := s.deps.repo.FindConversationMember(conversationID, userID); err != nil {
 		return nil, apperr.Forbidden("CONVERSATION_MEMBERSHIP_REQUIRED", "not a conversation member")
 	}
-	rows, err := s.deps.repo.ListConversationMemberProfiles(conversationID)
+	rows, err := s.deps.repo.ListConversationMemberProfiles(conversationID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -160,6 +184,8 @@ func (s *ConversationService) ListConversationMembers(userID, conversationID uin
 			UserID:      row.UserID,
 			Username:    row.Username,
 			DisplayName: row.DisplayName,
+			AvatarURL:   row.AvatarURL,
+			RemarkName:  row.RemarkName,
 			Role:        row.Role,
 			LastReadSeq: row.LastReadSeq,
 			JoinedAt:    row.JoinedAt.Format(time.RFC3339),
@@ -170,6 +196,9 @@ func (s *ConversationService) ListConversationMembers(userID, conversationID uin
 }
 
 func (s *ConversationService) AddConversationMembers(actorID, conversationID uint64, memberIDs []uint64) error {
+	if err := s.requireGroupConversation(conversationID, "adding members"); err != nil {
+		return err
+	}
 	member, err := s.deps.repo.FindConversationMember(conversationID, actorID)
 	if err != nil {
 		return apperr.Forbidden("CONVERSATION_MEMBERSHIP_REQUIRED", "not a conversation member")
@@ -178,6 +207,11 @@ func (s *ConversationService) AddConversationMembers(actorID, conversationID uin
 		return apperr.Forbidden("FORBIDDEN_CONVERSATION_ACTION", "only owner/admin can invite members")
 	}
 	memberIDs = uniqueIDs(memberIDs)
+	if hasBot, err := s.containsBotMember(memberIDs); err != nil {
+		return err
+	} else if hasBot {
+		return apperr.BadRequest("BOT_GROUP_UNSUPPORTED", "AI Bot cannot be added to a group conversation")
+	}
 	for _, memberID := range memberIDs {
 		if _, err := s.deps.repo.FindUserByID(memberID); err != nil {
 			return apperr.NotFound("CONVERSATION_MEMBER_NOT_FOUND", fmt.Sprintf("user %d not found", memberID))
@@ -187,11 +221,20 @@ func (s *ConversationService) AddConversationMembers(actorID, conversationID uin
 		return err
 	}
 	recipients, _ := s.deps.repo.AccessibleConversationIDsForConversation(conversationID)
+	for _, memberID := range uniqueIDs(memberIDs) {
+		s.deps.emitSyncEvent(recipients, "member.joined", conversationAggregateID(conversationID), contracts.ConversationMemberEvent{
+			ConversationID: conversationID,
+			UserID:         memberID,
+		})
+	}
 	s.emitConversationUpsert(conversationID, recipients)
 	return nil
 }
 
 func (s *ConversationService) RemoveConversationMember(actorID, conversationID, targetID uint64) error {
+	if err := s.requireGroupConversation(conversationID, "removing members"); err != nil {
+		return err
+	}
 	member, err := s.deps.repo.FindConversationMember(conversationID, actorID)
 	if err != nil {
 		return apperr.Forbidden("CONVERSATION_MEMBERSHIP_REQUIRED", "not a conversation member")
@@ -199,11 +242,35 @@ func (s *ConversationService) RemoveConversationMember(actorID, conversationID, 
 	if actorID != targetID && member.Role != "owner" && member.Role != "admin" {
 		return apperr.Forbidden("FORBIDDEN_CONVERSATION_ACTION", "only owner/admin can remove members")
 	}
+	targetMember, err := s.deps.repo.FindConversationMember(conversationID, targetID)
+	if err != nil {
+		return apperr.NotFound("CONVERSATION_MEMBER_NOT_FOUND", "conversation member not found")
+	}
+	if targetMember.Role == "owner" {
+		members, err := s.deps.repo.ListConversationMembers(conversationID)
+		if err != nil {
+			return err
+		}
+		if len(members) == 1 {
+			if err := s.deps.repo.DeleteGroupConversation(conversationID, conversationAggregateID(conversationID)); err != nil {
+				return err
+			}
+			s.deps.emitSyncEvent([]uint64{targetID}, "conversation.removed", conversationAggregateID(conversationID), contracts.ConversationRemovedEvent{ConversationID: conversationID})
+			return nil
+		}
+		if len(members) > 1 {
+			return apperr.BadRequest("OWNER_TRANSFER_REQUIRED", "owner must transfer ownership before leaving or being removed")
+		}
+	}
 	if err := s.deps.repo.RemoveConversationMember(conversationID, targetID); err != nil {
 		return err
 	}
-	s.deps.emitSyncEvent([]uint64{targetID}, "conversation.removed", contracts.ConversationRemovedEvent{ConversationID: conversationID})
 	recipients, _ := s.deps.repo.AccessibleConversationIDsForConversation(conversationID)
+	s.deps.emitSyncEvent(append(recipients, targetID), "member.left", conversationAggregateID(conversationID), contracts.ConversationMemberEvent{
+		ConversationID: conversationID,
+		UserID:         targetID,
+	})
+	s.deps.emitSyncEvent([]uint64{targetID}, "conversation.removed", conversationAggregateID(conversationID), contracts.ConversationRemovedEvent{ConversationID: conversationID})
 	s.emitConversationUpsert(conversationID, recipients)
 	return nil
 }
@@ -216,16 +283,43 @@ func (s *ConversationService) LeaveConversation(userID, conversationID uint64) e
 	if conversation.Type == "direct" {
 		return apperr.BadRequest("DIRECT_CONVERSATION_CANNOT_LEAVE", "direct conversation cannot be left")
 	}
+	member, err := s.deps.repo.FindConversationMember(conversationID, userID)
+	if err != nil {
+		return apperr.Forbidden("CONVERSATION_MEMBERSHIP_REQUIRED", "not a conversation member")
+	}
+	if member.Role == "owner" {
+		members, err := s.deps.repo.ListConversationMembers(conversationID)
+		if err != nil {
+			return err
+		}
+		if len(members) == 1 {
+			if err := s.deps.repo.DeleteGroupConversation(conversationID, conversationAggregateID(conversationID)); err != nil {
+				return err
+			}
+			s.deps.emitSyncEvent([]uint64{userID}, "conversation.removed", conversationAggregateID(conversationID), contracts.ConversationRemovedEvent{ConversationID: conversationID})
+			return nil
+		}
+		if len(members) > 1 {
+			return apperr.BadRequest("OWNER_TRANSFER_REQUIRED", "owner must transfer ownership before leaving or being removed")
+		}
+	}
 	if err := s.deps.repo.RemoveConversationMember(conversationID, userID); err != nil {
 		return err
 	}
-	s.deps.emitSyncEvent([]uint64{userID}, "conversation.removed", contracts.ConversationRemovedEvent{ConversationID: conversationID})
 	recipients, _ := s.deps.repo.AccessibleConversationIDsForConversation(conversationID)
+	s.deps.emitSyncEvent(append(recipients, userID), "member.left", conversationAggregateID(conversationID), contracts.ConversationMemberEvent{
+		ConversationID: conversationID,
+		UserID:         userID,
+	})
+	s.deps.emitSyncEvent([]uint64{userID}, "conversation.removed", conversationAggregateID(conversationID), contracts.ConversationRemovedEvent{ConversationID: conversationID})
 	s.emitConversationUpsert(conversationID, recipients)
 	return nil
 }
 
 func (s *ConversationService) TransferOwnership(actorID, conversationID, targetID uint64) error {
+	if err := s.requireGroupConversation(conversationID, "transferring ownership"); err != nil {
+		return err
+	}
 	member, err := s.deps.repo.FindConversationMember(conversationID, actorID)
 	if err != nil {
 		return apperr.Forbidden("CONVERSATION_MEMBERSHIP_REQUIRED", "not a conversation member")
@@ -233,26 +327,83 @@ func (s *ConversationService) TransferOwnership(actorID, conversationID, targetI
 	if member.Role != "owner" {
 		return apperr.Forbidden("FORBIDDEN_CONVERSATION_ACTION", "only owner can transfer ownership")
 	}
+	if actorID == targetID {
+		return apperr.BadRequest("OWNER_TRANSFER_TARGET_INVALID", "ownership must be transferred to another group member")
+	}
+	targetMember, err := s.deps.repo.FindConversationMember(conversationID, targetID)
+	if err != nil {
+		return apperr.NotFound("CONVERSATION_MEMBER_NOT_FOUND", "conversation member not found")
+	}
+	if targetMember.Role == "owner" {
+		return apperr.BadRequest("OWNER_TRANSFER_TARGET_INVALID", "ownership must be transferred to another group member")
+	}
 	if err := s.deps.repo.SetConversationMemberRole(conversationID, actorID, "admin"); err != nil {
 		return err
 	}
 	return s.deps.repo.SetConversationMemberRole(conversationID, targetID, "owner")
 }
 
-func (s *ConversationService) SetPinned(userID, conversationID uint64, pinned bool) error {
-	if _, err := s.deps.repo.FindConversationMember(conversationID, userID); err != nil {
-		return apperr.Forbidden("CONVERSATION_MEMBERSHIP_REQUIRED", "not a conversation member")
+func (s *ConversationService) UpdateSettings(userID, conversationID uint64, req contracts.UpdateConversationSettingsRequest) (*contracts.ConversationDTO, error) {
+	member, err := s.deps.repo.FindConversationMember(conversationID, userID)
+	if err != nil {
+		return nil, apperr.Forbidden("CONVERSATION_MEMBERSHIP_REQUIRED", "not a conversation member")
 	}
-	return s.deps.repo.SetPin(userID, conversationID, pinned)
+	conversation, err := s.deps.repo.FindConversationByID(conversationID)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Draft != nil {
+		draft := strings.TrimSpace(*req.Draft)
+		req.Draft = &draft
+	}
+	if req.Announcement != nil {
+		if conversation.Type != "group" {
+			return nil, apperr.BadRequest("CONVERSATION_ANNOUNCEMENT_UNSUPPORTED", "announcement is only supported for group conversations")
+		}
+		if member.Role != "owner" && member.Role != "admin" {
+			return nil, apperr.Forbidden("FORBIDDEN_CONVERSATION_ACTION", "only owner/admin can update the announcement")
+		}
+		announcement := strings.TrimSpace(*req.Announcement)
+		req.Announcement = &announcement
+	}
+	if req.Pinned != nil && !*req.Pinned && s.deps.ai != nil {
+		isBotConversation, err := s.deps.ai.IsBotConversation(userID, conversationID)
+		if err != nil {
+			return nil, err
+		}
+		if isBotConversation {
+			return nil, apperr.BadRequest("BOT_CONVERSATION_PIN_REQUIRED", "AI Bot conversation must stay pinned")
+		}
+	}
+
+	if err := s.deps.repo.UpdateConversationSettings(userID, conversationID, req.Pinned, req.IsMuted, req.Draft); err != nil {
+		return nil, err
+	}
+	if req.Announcement != nil {
+		if err := s.deps.repo.UpdateConversationAnnouncement(conversationID, *req.Announcement); err != nil {
+			return nil, err
+		}
+	}
+
+	recipients := []uint64{userID}
+	if req.Announcement != nil {
+		recipients, _ = s.deps.repo.AccessibleConversationIDsForConversation(conversationID)
+	}
+	s.emitConversationUpsert(conversationID, recipients)
+	return s.GetConversationSummary(userID, conversationID)
 }
 
 func (s *ConversationService) resolveDirectConversationName(userID, conversationID uint64) (string, error) {
-	members, err := s.deps.repo.ListConversationMemberProfiles(conversationID)
+	members, err := s.deps.repo.ListConversationMemberProfiles(conversationID, userID)
 	if err != nil {
 		return "", err
 	}
 	for _, member := range members {
 		if member.UserID != userID {
+			if member.RemarkName != "" {
+				return member.RemarkName, nil
+			}
 			if member.DisplayName != "" {
 				return member.DisplayName, nil
 			}
@@ -263,8 +414,35 @@ func (s *ConversationService) resolveDirectConversationName(userID, conversation
 }
 
 func (s *ConversationService) publishConversationIndex(dto *contracts.ConversationDTO) {
-	if s.deps.rabbit == nil {
-		return
+	event := conversationIndexEvent(dto)
+	if err := s.deps.publishJSON("search.conversation.index", event); err != nil {
+		_ = s.deps.indexConversationCompensation(context.Background(), event)
 	}
-	_ = s.deps.rabbit.PublishJSON("search.conversation.index", conversationIndexEvent(dto))
+}
+
+func (s *ConversationService) containsBotMember(memberIDs []uint64) (bool, error) {
+	if s.deps.ai == nil {
+		return false, nil
+	}
+	botUserID, err := s.deps.ai.BotUserID()
+	if err != nil || botUserID == 0 {
+		return false, err
+	}
+	for _, memberID := range memberIDs {
+		if memberID == botUserID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (s *ConversationService) requireGroupConversation(conversationID uint64, action string) error {
+	conversation, err := s.deps.repo.FindConversationByID(conversationID)
+	if err != nil {
+		return err
+	}
+	if conversation.Type != "group" {
+		return apperr.BadRequest("GROUP_ACTION_UNSUPPORTED", action+" is only supported for group conversations")
+	}
+	return nil
 }

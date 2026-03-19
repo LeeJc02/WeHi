@@ -20,7 +20,7 @@ type ConversationService interface {
 	RemoveConversationMember(actorID, conversationID, targetID uint64) error
 	LeaveConversation(userID, conversationID uint64) error
 	TransferOwnership(actorID, conversationID, targetID uint64) error
-	SetPinned(userID, conversationID uint64, pinned bool) error
+	UpdateSettings(userID, conversationID uint64, req contracts.UpdateConversationSettingsRequest) (*contracts.ConversationDTO, error)
 }
 
 type ConversationController struct {
@@ -205,7 +205,7 @@ func (ctl *ConversationController) TransferOwnership(c *gin.Context) {
 	httpx.Success(c, gin.H{"status": "transferred"})
 }
 
-func (ctl *ConversationController) SetConversationPin(c *gin.Context) {
+func (ctl *ConversationController) UpdateConversationSettings(c *gin.Context) {
 	user, _, ok := requireCurrentUser(c)
 	if !ok {
 		return
@@ -215,16 +215,17 @@ func (ctl *ConversationController) SetConversationPin(c *gin.Context) {
 		httpx.Fail(c, 400, err.Error())
 		return
 	}
-	var req contracts.SetConversationPinRequest
+	var req contracts.UpdateConversationSettingsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.Fail(c, 400, err.Error())
 		return
 	}
-	if err := ctl.service.SetPinned(user.ID, conversationID, req.Pinned); err != nil {
+	conversation, err := ctl.service.UpdateSettings(user.ID, conversationID, req)
+	if err != nil {
 		httpx.FailError(c, err)
 		return
 	}
-	httpx.Success(c, gin.H{"status": "updated"})
+	httpx.Success(c, conversation)
 }
 
 func (ctl *ConversationController) onlineMembers(ctx context.Context) map[uint64]bool {

@@ -1,17 +1,21 @@
 package chat
 
-import "awesomeproject/pkg/contracts"
+import (
+	"strconv"
 
-func (d *dependencies) emitSyncEvent(userIDs []uint64, eventType string, payload any) {
+	"awesomeproject/pkg/contracts"
+)
+
+func (d *dependencies) emitSyncEvent(userIDs []uint64, eventType, aggregateID string, payload any) {
 	userIDs = uniqueIDs(userIDs)
 	if len(userIDs) == 0 {
 		return
 	}
 	if d.repo != nil {
-		_ = d.repo.AppendSyncEvents(userIDs, eventType, payload)
+		_ = d.repo.AppendSyncEvents(userIDs, eventType, aggregateID, payload)
 	}
 	if d.rabbit != nil {
-		_ = d.rabbit.PublishJSON("sync.notify", contracts.SyncNotifyEvent{Recipients: userIDs})
+		_ = d.publishJSON("sync.notify", contracts.SyncNotifyEvent{Recipients: userIDs})
 	}
 }
 
@@ -21,6 +25,26 @@ func (s *ConversationService) emitConversationUpsert(conversationID uint64, user
 		if err != nil {
 			continue
 		}
-		s.deps.emitSyncEvent([]uint64{userID}, "conversation.upsert", contracts.ConversationSyncEvent{Conversation: *dto})
+		s.deps.emitSyncEvent([]uint64{userID}, "conversation.updated", conversationAggregateID(conversationID), contracts.ConversationSyncEvent{Conversation: *dto})
 	}
+}
+
+func conversationAggregateID(conversationID uint64) string {
+	return "conversation:" + formatUint(conversationID)
+}
+
+func messageAggregateID(messageID uint64) string {
+	return "message:" + formatUint(messageID)
+}
+
+func friendRequestAggregateID(requestID uint64) string {
+	return "friend_request:" + formatUint(requestID)
+}
+
+func userAggregateID(userID uint64) string {
+	return "user:" + formatUint(userID)
+}
+
+func formatUint(value uint64) string {
+	return strconv.FormatUint(value, 10)
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const RequestIDKey = "request_id"
@@ -30,6 +31,14 @@ var (
 		Buckets: prometheus.DefBuckets,
 	}, []string{"service", "method", "route", "status"})
 )
+
+func HTTPRequestsTotalMetricName() string {
+	return "chat_http_requests_total"
+}
+
+func HTTPRequestDurationMetricName() string {
+	return "chat_http_request_duration_seconds"
+}
 
 func Success(c *gin.Context, data any) {
 	c.JSON(http.StatusOK, contracts.Envelope{
@@ -64,6 +73,9 @@ func RequestID() gin.HandlerFunc {
 		c.Set(RequestIDKey, requestID)
 		c.Header("X-Request-Id", requestID)
 		c.Next()
+		if spanContext := trace.SpanContextFromContext(c.Request.Context()); spanContext.IsValid() {
+			c.Header("X-Trace-Id", spanContext.TraceID().String())
+		}
 	}
 }
 
@@ -78,9 +90,12 @@ func StructuredLogger(serviceName string) gin.HandlerFunc {
 			route = c.Request.URL.Path
 		}
 		requestID, _ := c.Get(RequestIDKey)
+		spanContext := trace.SpanContextFromContext(c.Request.Context())
 		logger.Info("http_request",
 			"service", serviceName,
 			"request_id", requestID,
+			"trace_id", spanContext.TraceID().String(),
+			"span_id", spanContext.SpanID().String(),
 			"method", c.Request.Method,
 			"route", route,
 			"status", c.Writer.Status(),

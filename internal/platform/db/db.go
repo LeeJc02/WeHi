@@ -15,9 +15,11 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
+	otelgorm "gorm.io/plugin/opentelemetry/tracing"
 )
 
-func OpenGorm(dsn string) (*gorm.DB, error) {
+func OpenGorm(dsn, serviceName string) (*gorm.DB, error) {
+	_ = serviceName
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
 		Logger: gormlogger.New(
 			log.New(io.Discard, "", 0),
@@ -30,6 +32,13 @@ func OpenGorm(dsn string) (*gorm.DB, error) {
 		),
 	})
 	if err != nil {
+		return nil, err
+	}
+	if err := db.Use(otelgorm.NewPlugin(
+		otelgorm.WithDBSystem("mysql"),
+		otelgorm.WithoutMetrics(),
+		otelgorm.WithoutQueryVariables(),
+	)); err != nil {
 		return nil, err
 	}
 	sqlDB, err := db.DB()

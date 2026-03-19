@@ -1,0 +1,35 @@
+bot:
+  enabled: true
+  username: ai_bot
+  display_name: AI Bot
+  system_prompt: ""
+  default_provider: zhipu
+  default_model: glm-4.5-air
+  context_messages: 20
+  async_timeout_seconds: 30
+
+providers:
+  zhipu:
+    enabled: true
+    api_key: ""
+    base_url: https://open.bigmodel.cn/api/coding/paas/v4
+    models:
+      - glm-4.5-air
+      - glm-4.5
+  openai:
+    enabled: false
+    api_key: ""
+    base_url: https://api.openai.com/v1
+    models:
+      - gpt-4.1-mini
+      - gpt-4.1
+  anthropic:
+    enabled: false
+    api_key: ""
+    base_url: https://api.anthropic.com/v1
+    models:
+      - claude-3-5-sonnet-latest
+
+audit:
+  enabled: true
+  retention_days: 7

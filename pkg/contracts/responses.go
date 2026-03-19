@@ -6,6 +6,7 @@ type UserProfile struct {
 	ID          uint64 `json:"id"`
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
+	AvatarURL   string `json:"avatar_url"`
 }
 
 type SessionInfo struct {
@@ -27,6 +28,9 @@ type FriendDTO struct {
 	ID          uint64 `json:"id"`
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
+	AvatarURL   string `json:"avatar_url"`
+	RemarkName  string `json:"remark_name"`
+	IsAIBot     bool   `json:"is_ai_bot"`
 }
 
 type FriendRequestDTO struct {
@@ -44,9 +48,13 @@ type ConversationDTO struct {
 	ID                 uint64 `json:"id"`
 	Type               string `json:"type"`
 	Name               string `json:"name"`
+	Announcement       string `json:"announcement"`
 	CreatorID          uint64 `json:"creator_id"`
 	MemberCount        int64  `json:"member_count"`
 	Pinned             bool   `json:"pinned"`
+	PinnedAt           string `json:"pinned_at"`
+	IsMuted            bool   `json:"is_muted"`
+	Draft              string `json:"draft"`
 	LastReadSeq        uint64 `json:"last_read_seq"`
 	UnreadCount        int64  `json:"unread_count"`
 	LastMessageSeq     uint64 `json:"last_message_seq"`
@@ -60,6 +68,8 @@ type ConversationMemberDTO struct {
 	UserID      uint64 `json:"user_id"`
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
+	AvatarURL   string `json:"avatar_url"`
+	RemarkName  string `json:"remark_name"`
 	Role        string `json:"role"`
 	LastReadSeq uint64 `json:"last_read_seq"`
 	JoinedAt    string `json:"joined_at"`
@@ -67,15 +77,20 @@ type ConversationMemberDTO struct {
 }
 
 type MessageDTO struct {
-	ID             uint64 `json:"id"`
-	ConversationID uint64 `json:"conversation_id"`
-	Seq            uint64 `json:"seq"`
-	SenderID       uint64 `json:"sender_id"`
-	MessageType    string `json:"message_type"`
-	Content        string `json:"content"`
-	ClientMsgID    string `json:"client_msg_id"`
-	Status         string `json:"status"`
-	CreatedAt      string `json:"created_at"`
+	ID               uint64               `json:"id"`
+	ConversationID   uint64               `json:"conversation_id"`
+	Seq              uint64               `json:"seq"`
+	SenderID         uint64               `json:"sender_id"`
+	MessageType      string               `json:"message_type"`
+	Content          string               `json:"content"`
+	ReplyToMessageID *uint64              `json:"reply_to_message_id,omitempty"`
+	ReplyTo          *MessageReferenceDTO `json:"reply_to,omitempty"`
+	Attachment       *AttachmentDTO       `json:"attachment,omitempty"`
+	ClientMsgID      string               `json:"client_msg_id"`
+	Status           string               `json:"status"`
+	DeliveryStatus   string               `json:"delivery_status"`
+	CreatedAt        string               `json:"created_at"`
+	RecalledAt       string               `json:"recalled_at"`
 }
 
 type SearchConversationHit struct {
@@ -102,10 +117,13 @@ type SearchResponse struct {
 }
 
 type SyncEventDTO struct {
-	Cursor    uint64          `json:"cursor"`
-	Type      string          `json:"type"`
-	Payload   json.RawMessage `json:"payload"`
-	CreatedAt string          `json:"created_at"`
+	EventID     uint64          `json:"event_id"`
+	EventType   string          `json:"event_type"`
+	AggregateID string          `json:"aggregate_id"`
+	Cursor      uint64          `json:"cursor"`
+	Type        string          `json:"type"`
+	Payload     json.RawMessage `json:"payload"`
+	CreatedAt   string          `json:"created_at"`
 }
 
 type SyncEventsResponse struct {

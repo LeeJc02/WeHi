@@ -14,6 +14,7 @@ import (
 	"awesomeproject/internal/controllers"
 	"awesomeproject/internal/platform/db"
 	httpx "awesomeproject/internal/platform/httpx"
+	"awesomeproject/internal/platform/observability"
 	"awesomeproject/internal/platform/rabbit"
 	redisclient "awesomeproject/internal/platform/redis"
 	"awesomeproject/internal/platform/search"
@@ -26,7 +27,12 @@ import (
 
 func main() {
 	cfg := config.Load("realtime-service", "8083")
-	gormDB, err := db.OpenGorm(cfg.MySQLDSN)
+	shutdownTracing, err := observability.Init(context.Background(), cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = shutdownTracing(context.Background()) }()
+	gormDB, err := db.OpenGorm(cfg.MySQLDSN, cfg.ServiceName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -40,7 +46,7 @@ func main() {
 	repo := repository.New(gormDB)
 	authService := auth.NewService(repo, redis, cfg)
 	presenceService := presence.NewService(redis)
-	chatServices := chat.NewServices(repo, rabbitClient, searchClient, cfg.ElasticsearchMessagesIndex, cfg.ElasticsearchConversationsIndex)
+	chatServices := chat.NewServices(repo, rabbitClient, searchClient, presenceService, nil, cfg.ElasticsearchMessagesIndex, cfg.ElasticsearchConversationsIndex)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -70,16 +76,45 @@ func main() {
 
 	h := realtime.NewHub()
 	realtimeController := controllers.NewRealtimeController(authService, presenceService, h)
-	if err := rabbitClient.Consume("realtime.events", []string{"message.new", "conversation.read", "friend.request", "sync.notify"}, func(routingKey string, body []byte) error {
+	if err := rabbitClient.Consume("realtime.events", []string{"message.accepted", "message.persisted", "message.delivered", "message.new", "message.recalled", "message.read", "conversation.read", "typing.updated", "friend.request", "sync.notify"}, func(ctx context.Context, routingKey string, body []byte) error {
+		_ = ctx
 		switch routingKey {
-		case "message.new":
-			var event contracts.MessageFanoutEvent
+		case "message.accepted":
+			var event contracts.MessageAcceptedEvent
 			if err := json.Unmarshal(body, &event); err != nil {
 				return err
 			}
 			h.Broadcast(event.Recipients, contracts.EventEnvelope{Type: routingKey, Payload: event})
-		case "conversation.read":
+		case "message.persisted", "message.new":
+			var event contracts.MessageFanoutEvent
+			if err := json.Unmarshal(body, &event); err != nil {
+				return err
+			}
+			eventType := routingKey
+			if routingKey == "message.new" {
+				eventType = "message.persisted"
+			}
+			h.Broadcast(event.Recipients, contracts.EventEnvelope{Type: eventType, Payload: event})
+		case "message.delivered":
+			var event contracts.MessageDeliveryEvent
+			if err := json.Unmarshal(body, &event); err != nil {
+				return err
+			}
+			h.Broadcast(event.Recipients, contracts.EventEnvelope{Type: routingKey, Payload: event})
+		case "message.recalled":
+			var event contracts.MessageRecalledEvent
+			if err := json.Unmarshal(body, &event); err != nil {
+				return err
+			}
+			h.Broadcast(event.Recipients, contracts.EventEnvelope{Type: routingKey, Payload: event})
+		case "message.read", "conversation.read":
 			var event contracts.ReadReceiptEvent
+			if err := json.Unmarshal(body, &event); err != nil {
+				return err
+			}
+			h.Broadcast(event.Recipients, contracts.EventEnvelope{Type: "message.read", Payload: event})
+		case "typing.updated":
+			var event contracts.TypingUpdatedEvent
 			if err := json.Unmarshal(body, &event); err != nil {
 				return err
 			}
@@ -101,20 +136,20 @@ func main() {
 	}); err != nil {
 		log.Fatal(err)
 	}
-	if err := rabbitClient.Consume("search.events", []string{"search.message.index", "search.conversation.index"}, func(routingKey string, body []byte) error {
+	if err := rabbitClient.Consume("search.events", []string{"search.message.index", "search.conversation.index"}, func(ctx context.Context, routingKey string, body []byte) error {
 		switch routingKey {
 		case "search.message.index":
 			var event contracts.SearchMessageIndexEvent
 			if err := json.Unmarshal(body, &event); err != nil {
 				return err
 			}
-			return chatServices.Search.IndexMessageEvent(context.Background(), event)
+			return chatServices.Search.IndexMessageEvent(ctx, event)
 		case "search.conversation.index":
 			var event contracts.SearchConversationIndexEvent
 			if err := json.Unmarshal(body, &event); err != nil {
 				return err
 			}
-			return chatServices.Search.IndexConversationEvent(context.Background(), event)
+			return chatServices.Search.IndexConversationEvent(ctx, event)
 		}
 		return nil
 	}); err != nil {
@@ -122,7 +157,7 @@ func main() {
 	}
 
 	router := gin.New()
-	router.Use(httpx.RequestID(), httpx.StructuredLogger(cfg.ServiceName), httpx.Metrics(cfg.ServiceName), gin.Recovery(), httpx.CORS(cfg.CORSOrigins))
+	router.Use(httpx.RequestID(), observability.GinMiddleware(cfg.ServiceName), httpx.StructuredLogger(cfg.ServiceName), httpx.Metrics(cfg.ServiceName), gin.Recovery(), httpx.CORS(cfg.CORSOrigins))
 	router.GET("/metrics", httpx.MetricsHandler())
 	routes.RegisterRealtimeRoutes(router, realtimeController)
 

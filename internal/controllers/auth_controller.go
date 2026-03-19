@@ -101,3 +101,15 @@ func (ctl *AuthController) LogoutAll(c *gin.Context) {
 	}
 	httpx.Success(c, gin.H{"status": "all_sessions_revoked"})
 }
+
+func (ctl *AuthController) LogoutOthers(c *gin.Context) {
+	user, sessionID, ok := requireCurrentUser(c)
+	if !ok {
+		return
+	}
+	if err := ctl.service.LogoutOthers(c.Request.Context(), user.ID, sessionID); err != nil {
+		httpx.FailError(c, err)
+		return
+	}
+	httpx.Success(c, gin.H{"status": "other_sessions_revoked"})
+}

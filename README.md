@@ -5,6 +5,7 @@
 - 后端服务：`auth-service`、`api-service`、`realtime-service`
 - 前端：`frontend/`（Next.js App Router）
 - 基础设施：MySQL、Redis
+- 可观测：OpenTelemetry + Jaeger
 - 默认不会依赖宿主机上的 MySQL / Redis / Go / Node 进程
 - 默认 Docker 栈使用仓库内置 fallback：事件链路走 Redis Pub/Sub，搜索走 MySQL fallback
 
@@ -68,12 +69,19 @@ make smoke
 
 `make smoke` 会在 Docker 容器内执行 API 与实时链路 smoke，不依赖宿主机的 Node 环境。
 
+附加入口：
+
+- 管理后台：`/admin`
+- 默认管理员：`root / 123456`
+- Jaeger：`http://127.0.0.1:28686`
+
 ## 默认端口
 
 - Auth: `http://127.0.0.1:28081`
 - API: `http://127.0.0.1:28082`
 - Realtime: `ws://127.0.0.1:28083/ws`
 - Frontend: `http://127.0.0.1:25173`
+- Jaeger UI: `http://127.0.0.1:28686`
 
 说明：
 
@@ -89,3 +97,11 @@ make smoke
 - `frontend/.next/`
 - `frontend/dist/`
 - `frontend/tsconfig.tsbuildinfo`
+
+## 补充文档
+
+- [架构说明](/Users/lee/GolandProjects/awesomeProject/10/docs/ARCHITECTURE.md)
+- [部署说明](/Users/lee/GolandProjects/awesomeProject/10/docs/DEPLOYMENT.md)
+- [可观测性说明](/Users/lee/GolandProjects/awesomeProject/10/docs/OBSERVABILITY.md)
+- [关键时序](/Users/lee/GolandProjects/awesomeProject/10/docs/SEQUENCES.md)
+- [故障排查](/Users/lee/GolandProjects/awesomeProject/10/docs/TROUBLESHOOTING.md)

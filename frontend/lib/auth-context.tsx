@@ -26,6 +26,7 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<void>
   register: (username: string, displayName: string, password: string) => Promise<void>
   logout: () => Promise<void>
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -62,6 +63,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const refreshUser = useCallback(async () => {
+    const profile = await getCurrentUser()
+    setUser(profile)
+  }, [])
+
   const login = useCallback(async (username: string, password: string) => {
     const result = await apiLogin({ username, password })
     setUser(result.user)
@@ -91,6 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         register,
         logout,
+        refreshUser,
       }}
     >
       {children}

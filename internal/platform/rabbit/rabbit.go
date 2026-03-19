@@ -8,8 +8,14 @@ import (
 	"strings"
 	"time"
 
+	"awesomeproject/internal/platform/observability"
+
 	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	redispkg "github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 type Client struct {
@@ -29,6 +35,7 @@ func New(url, exchange string) (*Client, error) {
 		client := redispkg.NewClient(&redispkg.Options{
 			Addr: parsed.Host,
 		})
+		_ = redisotel.InstrumentTracing(client)
 		if err := client.Ping(context.Background()).Err(); err != nil {
 			return nil, err
 		}
@@ -75,15 +82,22 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) PublishJSON(routingKey string, payload any) error {
+	return c.PublishJSONWithContext(context.Background(), routingKey, payload)
+}
+
+func (c *Client) PublishJSONWithContext(ctx context.Context, routingKey string, payload any) error {
 	if c == nil {
 		return nil
 	}
+	ctx, span := observability.Tracer("rabbitmq").Start(ctx, "rabbit.publish")
+	defer span.End()
+	span.SetAttributes(attribute.String("messaging.destination", c.exchange), attribute.String("messaging.routing_key", routingKey))
 	if c.useRedisBus {
 		body, err := json.Marshal(payload)
 		if err != nil {
 			return err
 		}
-		return c.redis.Publish(context.Background(), c.redisChannel(routingKey), body).Err()
+		return c.redis.Publish(ctx, c.redisChannel(routingKey), body).Err()
 	}
 	if c.channel == nil {
 		return errors.New("rabbit client not initialized")
@@ -92,16 +106,19 @@ func (c *Client) PublishJSON(routingKey string, payload any) error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	pubCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	return c.channel.PublishWithContext(ctx, c.exchange, routingKey, false, false, amqp.Publishing{
+	headers := amqp.Table{}
+	otel.GetTextMapPropagator().Inject(ctx, amqpHeaderCarrier(headers))
+	return c.channel.PublishWithContext(pubCtx, c.exchange, routingKey, false, false, amqp.Publishing{
 		ContentType: "application/json",
 		Body:        body,
 		Timestamp:   time.Now(),
+		Headers:     headers,
 	})
 }
 
-func (c *Client) Consume(queue string, bindings []string, handler func(routingKey string, body []byte) error) error {
+func (c *Client) Consume(queue string, bindings []string, handler func(ctx context.Context, routingKey string, body []byte) error) error {
 	if c.useRedisBus {
 		channels := make([]string, 0, len(bindings))
 		for _, binding := range bindings {
@@ -114,7 +131,10 @@ func (c *Client) Consume(queue string, bindings []string, handler func(routingKe
 		go func() {
 			for message := range pubsub.Channel() {
 				key := strings.TrimPrefix(message.Channel, c.exchange+".")
-				_ = handler(key, []byte(message.Payload))
+				ctx, span := observability.Tracer("rabbitmq").Start(context.Background(), "redis_pubsub.consume")
+				span.SetAttributes(attribute.String("messaging.destination", c.exchange), attribute.String("messaging.routing_key", key))
+				_ = handler(ctx, key, []byte(message.Payload))
+				span.End()
 			}
 		}()
 		return nil
@@ -133,10 +153,15 @@ func (c *Client) Consume(queue string, bindings []string, handler func(routingKe
 	}
 	go func() {
 		for msg := range msgs {
-			if err := handler(msg.RoutingKey, msg.Body); err != nil {
+			ctx := otel.GetTextMapPropagator().Extract(context.Background(), amqpHeaderCarrier(msg.Headers))
+			ctx, span := observability.Tracer("rabbitmq").Start(ctx, "rabbit.consume")
+			span.SetAttributes(attribute.String("messaging.destination", c.exchange), attribute.String("messaging.routing_key", msg.RoutingKey))
+			if err := handler(ctx, msg.RoutingKey, msg.Body); err != nil {
+				span.End()
 				_ = msg.Nack(false, true)
 				continue
 			}
+			span.End()
 			_ = msg.Ack(false)
 		}
 	}()
@@ -150,3 +175,30 @@ func (c *Client) redisChannel(routingKey string) string {
 func urlpkg(raw string) (*url.URL, error) {
 	return url.Parse(raw)
 }
+
+type amqpHeaderCarrier amqp.Table
+
+func (c amqpHeaderCarrier) Get(key string) string {
+	value, ok := c[key]
+	if !ok {
+		return ""
+	}
+	if text, ok := value.(string); ok {
+		return text
+	}
+	return ""
+}
+
+func (c amqpHeaderCarrier) Set(key, value string) {
+	c[key] = value
+}
+
+func (c amqpHeaderCarrier) Keys() []string {
+	keys := make([]string, 0, len(c))
+	for key := range c {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+var _ propagation.TextMapCarrier = amqpHeaderCarrier{}

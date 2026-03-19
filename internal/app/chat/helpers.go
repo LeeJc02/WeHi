@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"encoding/json"
 	"sort"
 	"time"
 
@@ -9,16 +10,27 @@ import (
 )
 
 func messageDTO(msg *repository.Message) contracts.MessageDTO {
+	var attachment *contracts.AttachmentDTO
+	if msg.AttachmentJSON != "" {
+		var parsed contracts.AttachmentDTO
+		if err := json.Unmarshal([]byte(msg.AttachmentJSON), &parsed); err == nil {
+			attachment = &parsed
+		}
+	}
 	return contracts.MessageDTO{
-		ID:             msg.ID,
-		ConversationID: msg.ConversationID,
-		Seq:            msg.Seq,
-		SenderID:       msg.SenderID,
-		MessageType:    msg.MessageType,
-		Content:        msg.Content,
-		ClientMsgID:    msg.ClientMsgID,
-		Status:         msg.Status,
-		CreatedAt:      msg.CreatedAt.Format(time.RFC3339),
+		ID:               msg.ID,
+		ConversationID:   msg.ConversationID,
+		Seq:              msg.Seq,
+		SenderID:         msg.SenderID,
+		MessageType:      msg.MessageType,
+		Content:          msg.Content,
+		ReplyToMessageID: msg.ReplyToMessageID,
+		Attachment:       attachment,
+		ClientMsgID:      msg.ClientMsgID,
+		Status:           msg.Status,
+		DeliveryStatus:   msg.DeliveryStatus,
+		CreatedAt:        msg.CreatedAt.Format(time.RFC3339),
+		RecalledAt:       formatTimePtr(msg.RecalledAt),
 	}
 }
 

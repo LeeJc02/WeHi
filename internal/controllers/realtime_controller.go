@@ -8,10 +8,12 @@ import (
 	"awesomeproject/internal/app/auth"
 	"awesomeproject/internal/app/presence"
 	httpx "awesomeproject/internal/platform/httpx"
+	"awesomeproject/internal/platform/observability"
 	"awesomeproject/internal/realtime"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type RealtimeController struct {
@@ -31,12 +33,18 @@ func NewRealtimeController(authService *auth.Service, presenceService *presence.
 }
 
 func (ctl *RealtimeController) ServeWS(c *gin.Context) {
+	ctx, span := observability.Tracer("realtime.ws").Start(c.Request.Context(), "websocket.connect")
+	defer span.End()
 	token := c.Query("token")
 	claims, err := ctl.authService.ParseAccessToken(token)
 	if err != nil {
 		httpx.Fail(c, http.StatusUnauthorized, err.Error())
 		return
 	}
+	span.SetAttributes(
+		attribute.Int64("chat.user_id", int64(claims.UserID)),
+		attribute.String("chat.session_id", claims.SessionID),
+	)
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
@@ -50,7 +58,7 @@ func (ctl *RealtimeController) ServeWS(c *gin.Context) {
 	})
 
 	ctl.hub.Add(claims.UserID, conn)
-	_ = ctl.presence.MarkOnline(c.Request.Context(), claims.UserID)
+	_ = ctl.presence.MarkOnline(ctx, claims.UserID)
 
 	done := make(chan struct{})
 	go func() {

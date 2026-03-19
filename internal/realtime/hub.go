@@ -7,7 +7,14 @@ import (
 	"awesomeproject/pkg/contracts"
 
 	"github.com/gorilla/websocket"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
+
+var wsConnections = promauto.NewGauge(prometheus.GaugeOpts{
+	Name: "chat_ws_connections",
+	Help: "Current number of live websocket connections.",
+})
 
 type Hub struct {
 	mu    sync.RWMutex
@@ -25,6 +32,7 @@ func (h *Hub) Add(userID uint64, conn *websocket.Conn) {
 		h.conns[userID] = map[*websocket.Conn]struct{}{}
 	}
 	h.conns[userID][conn] = struct{}{}
+	wsConnections.Inc()
 }
 
 func (h *Hub) Remove(userID uint64, conn *websocket.Conn) {
@@ -34,6 +42,7 @@ func (h *Hub) Remove(userID uint64, conn *websocket.Conn) {
 		return
 	}
 	delete(h.conns[userID], conn)
+	wsConnections.Dec()
 	if len(h.conns[userID]) == 0 {
 		delete(h.conns, userID)
 	}

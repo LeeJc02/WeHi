@@ -22,7 +22,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
-import { Bell, Check, MessageCircle, Search, UserPlus, Users, X } from 'lucide-react'
+import { Bell, Check, MessageCircle, Pencil, Search, UserPlus, Users, X } from 'lucide-react'
 import type { Conversation, Friend, FriendRequest, GroupRequest, User } from '@/lib/types'
 
 const dictionarySorter = new Intl.Collator('zh-Hans-CN', {
@@ -34,6 +34,13 @@ type ContactsTab = 'friends' | 'groups' | 'requests'
 
 function sortByDictionaryOrder<T>(items: T[], getPrimary: (item: T) => string, getSecondary?: (item: T) => string) {
   return [...items].sort((left, right) => {
+    if ('is_ai_bot' in (left as object) && 'is_ai_bot' in (right as object)) {
+      const leftBot = Boolean((left as Friend).is_ai_bot)
+      const rightBot = Boolean((right as Friend).is_ai_bot)
+      if (leftBot !== rightBot) {
+        return leftBot ? -1 : 1
+      }
+    }
     const primary = dictionarySorter.compare(getPrimary(left), getPrimary(right))
     if (primary !== 0) {
       return primary
@@ -57,6 +64,7 @@ export function ContactsPanel() {
     approveFriendRequest,
     rejectFriendRequest,
     sendFriendRequest,
+    updateFriendRemark,
     startDirectChat,
     createGroupChat,
     setCurrentConversation,
@@ -78,13 +86,14 @@ export function ContactsPanel() {
       ? friends
       : friends.filter(
           (friend) =>
+            friend.remark_name.toLowerCase().includes(query) ||
             friend.display_name.toLowerCase().includes(query) ||
             friend.username.toLowerCase().includes(query),
         )
 
     return sortByDictionaryOrder(
       rows,
-      (friend) => friend.display_name || friend.username,
+      (friend) => friend.remark_name || friend.display_name || friend.username,
       (friend) => friend.username,
     )
   }, [friends, searchQuery])
@@ -227,7 +236,7 @@ export function ContactsPanel() {
 
         <TabsContent value="friends" className="mt-0 min-h-0 flex-1">
           <ScrollArea className="h-full">
-            <FriendList friends={filteredFriends} onStartChat={startDirectChat} />
+            <FriendList friends={filteredFriends} onStartChat={startDirectChat} onUpdateRemark={updateFriendRemark} />
           </ScrollArea>
         </TabsContent>
 
@@ -255,9 +264,10 @@ export function ContactsPanel() {
 interface FriendListProps {
   friends: Friend[]
   onStartChat: (userId: number) => Promise<void>
+  onUpdateRemark: (friendId: number, remarkName: string) => Promise<void>
 }
 
-function FriendList({ friends, onStartChat }: FriendListProps) {
+function FriendList({ friends, onStartChat, onUpdateRemark }: FriendListProps) {
   if (friends.length === 0) {
     return <EmptyState title="暂无好友" description="先添加好友，再从这里发起聊天。" />
   }
@@ -265,22 +275,38 @@ function FriendList({ friends, onStartChat }: FriendListProps) {
   return (
     <div className="py-2">
       {friends.map((friend) => (
-        <button
-          key={friend.id}
-          onClick={() => onStartChat(friend.id)}
-          className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/28"
-        >
+        <div key={friend.id} className="flex items-center gap-2 px-4 py-3 transition-colors hover:bg-white/28">
+          <button onClick={() => onStartChat(friend.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
           <Avatar className="h-10 w-10 rounded-lg">
-            <AvatarFallback className="rounded-lg bg-wechat-green text-white">
-              {friend.display_name.charAt(0)}
-            </AvatarFallback>
+            {friend.avatar_url ? <img src={friend.avatar_url} alt={friend.display_name} className="h-full w-full rounded-lg object-cover" /> : null}
+            <AvatarFallback className="rounded-lg bg-wechat-green text-white">{(friend.remark_name || friend.display_name).charAt(0)}</AvatarFallback>
           </Avatar>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{friend.display_name}</p>
+            <p className="truncate text-sm font-medium">
+              {friend.remark_name || friend.display_name}
+              {friend.is_ai_bot ? <span className="ml-2 rounded-full bg-wechat-green/10 px-2 py-0.5 text-[10px] text-wechat-green">AI Bot</span> : null}
+            </p>
             <p className="truncate text-xs text-muted-foreground">@{friend.username}</p>
+            {friend.remark_name && (
+              <p className="truncate text-xs text-muted-foreground">原昵称：{friend.display_name}</p>
+            )}
           </div>
           <MessageCircle className="h-4 w-4 text-muted-foreground" />
-        </button>
+          </button>
+          {!friend.is_ai_bot ? <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              const nextRemark = window.prompt('编辑备注名', friend.remark_name || friend.display_name)
+              if (nextRemark === null) {
+                return
+              }
+              void onUpdateRemark(friend.id, nextRemark)
+            }}
+          >
+            <Pencil className="h-4 w-4 text-muted-foreground" />
+          </Button> : null}
+        </div>
       ))}
     </div>
   )
@@ -753,12 +779,13 @@ function CreateGroupDialog({ friends, onCreateGroup, onClose }: CreateGroupDialo
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const groupableFriends = useMemo(() => friends.filter((friend) => !friend.is_ai_bot), [friends])
 
   const selectableFriends = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
     const rows = !query
-      ? friends
-      : friends.filter(
+      ? groupableFriends
+      : groupableFriends.filter(
           (friend) =>
             friend.display_name.toLowerCase().includes(query) ||
             friend.username.toLowerCase().includes(query),
@@ -769,7 +796,7 @@ function CreateGroupDialog({ friends, onCreateGroup, onClose }: CreateGroupDialo
       (friend) => friend.display_name || friend.username,
       (friend) => friend.username,
     )
-  }, [friends, searchQuery])
+  }, [groupableFriends, searchQuery])
 
   function toggleFriend(userId: number) {
     setSelectedIds((current) => {
@@ -831,7 +858,7 @@ function CreateGroupDialog({ friends, onCreateGroup, onClose }: CreateGroupDialo
         <ScrollArea className="h-[260px] rounded-lg border">
           {selectableFriends.length === 0 ? (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              {friends.length === 0 ? '当前还没有好友，无法创建群组。' : '没有匹配的好友'}
+              {groupableFriends.length === 0 ? '当前还没有可拉群的好友。' : '没有匹配的好友'}
             </div>
           ) : (
             <div className="space-y-1 p-1">

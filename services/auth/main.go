@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 
 	"awesomeproject/internal/app/auth"
@@ -9,6 +10,7 @@ import (
 	"awesomeproject/internal/controllers"
 	"awesomeproject/internal/platform/db"
 	httpx "awesomeproject/internal/platform/httpx"
+	"awesomeproject/internal/platform/observability"
 	redisclient "awesomeproject/internal/platform/redis"
 	"awesomeproject/internal/routes"
 
@@ -17,7 +19,12 @@ import (
 
 func main() {
 	cfg := config.Load("auth-service", "8081")
-	gormDB, err := db.OpenGorm(cfg.MySQLDSN)
+	shutdownTracing, err := observability.Init(context.Background(), cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = shutdownTracing(context.Background()) }()
+	gormDB, err := db.OpenGorm(cfg.MySQLDSN, cfg.ServiceName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -27,7 +34,7 @@ func main() {
 	authController := controllers.NewAuthController(authService)
 
 	router := gin.New()
-	router.Use(httpx.RequestID(), httpx.StructuredLogger(cfg.ServiceName), httpx.Metrics(cfg.ServiceName), gin.Recovery(), httpx.CORS(cfg.CORSOrigins))
+	router.Use(httpx.RequestID(), observability.GinMiddleware(cfg.ServiceName), httpx.StructuredLogger(cfg.ServiceName), httpx.Metrics(cfg.ServiceName), gin.Recovery(), httpx.CORS(cfg.CORSOrigins))
 	router.GET("/metrics", httpx.MetricsHandler())
 	routes.RegisterAuthRoutes(router, cfg, gormDB, redis, authService, authController)
 

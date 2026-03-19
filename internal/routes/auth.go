@@ -44,4 +44,5 @@ func RegisterAuthRoutes(router *gin.Engine, cfg config.Config, gormDB *gorm.DB, 
 	secured.GET("/sessions", controller.ListSessions)
 	secured.POST("/logout", controller.Logout)
 	secured.POST("/logout-all", controller.LogoutAll)
+	secured.POST("/logout-others", controller.LogoutOthers)
 }

@@ -31,10 +31,13 @@ func (s *Service) ListEvents(userID, cursor uint64, limit int) (*contracts.SyncE
 	for _, row := range rows {
 		nextCursor = row.ID
 		events = append(events, contracts.SyncEventDTO{
-			Cursor:    row.ID,
-			Type:      row.EventType,
-			Payload:   []byte(row.Payload),
-			CreatedAt: row.CreatedAt.Format(timeLayout),
+			EventID:     row.ID,
+			EventType:   row.EventType,
+			AggregateID: row.AggregateID,
+			Cursor:      row.ID,
+			Type:        row.EventType,
+			Payload:     []byte(row.Payload),
+			CreatedAt:   row.CreatedAt.Format(timeLayout),
 		})
 	}
 	return &contracts.SyncEventsResponse{

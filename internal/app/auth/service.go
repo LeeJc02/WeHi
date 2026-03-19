@@ -137,6 +137,30 @@ func (s *Service) LogoutAll(ctx context.Context, userID uint64) error {
 	return nil
 }
 
+func (s *Service) LogoutOthers(ctx context.Context, userID uint64, currentSessionID string) error {
+	sessionIDs, err := s.redis.SMembers(ctx, sessionSetKey(userID)).Result()
+	if err != nil {
+		return err
+	}
+	for _, sessionID := range sessionIDs {
+		if sessionID == currentSessionID {
+			continue
+		}
+		raw, err := s.redis.Get(ctx, sessionKey(userID, sessionID)).Result()
+		if err != nil {
+			continue
+		}
+		var state SessionState
+		if err := json.Unmarshal([]byte(raw), &state); err != nil {
+			continue
+		}
+		if err := s.deleteSession(ctx, userID, sessionID, state.Refresh); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Service) ListSessions(ctx context.Context, userID uint64, currentSessionID string) ([]contracts.SessionInfo, error) {
 	sessionIDs, err := s.redis.SMembers(ctx, sessionSetKey(userID)).Result()
 	if err != nil {
@@ -318,6 +342,7 @@ func toProfile(user *repository.User) contracts.UserProfile {
 		ID:          user.ID,
 		Username:    user.Username,
 		DisplayName: user.DisplayName,
+		AvatarURL:   user.AvatarURL,
 	}
 }
 

@@ -9,7 +9,7 @@ import (
 
 type UserReader interface {
 	ListUsers(currentUserID uint64) ([]contracts.UserProfile, error)
-	UpdateProfile(userID uint64, displayName string) (*contracts.UserProfile, error)
+	UpdateProfile(userID uint64, displayName, avatarURL string) (*contracts.UserProfile, error)
 }
 
 type UserController struct {
@@ -25,7 +25,7 @@ func (ctl *UserController) GetMe(c *gin.Context) {
 	if !ok {
 		return
 	}
-	httpx.Success(c, gin.H{"id": user.ID, "username": user.Username, "display_name": user.DisplayName})
+	httpx.Success(c, gin.H{"id": user.ID, "username": user.Username, "display_name": user.DisplayName, "avatar_url": user.AvatarURL})
 }
 
 func (ctl *UserController) ListUsers(c *gin.Context) {
@@ -51,7 +51,7 @@ func (ctl *UserController) UpdateMe(c *gin.Context) {
 		httpx.Fail(c, 400, err.Error())
 		return
 	}
-	profile, err := ctl.service.UpdateProfile(user.ID, req.DisplayName)
+	profile, err := ctl.service.UpdateProfile(user.ID, req.DisplayName, req.AvatarURL)
 	if err != nil {
 		httpx.FailError(c, err)
 		return

@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/auth-context'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Search, Pin, Users } from 'lucide-react'
+import { Search, Pin, BellOff, Users } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
 import type { Conversation } from '@/lib/types'
@@ -168,11 +168,14 @@ function ConversationItem({
         </div>
         <div className="flex items-center justify-between gap-2 mt-0.5">
           <span className="text-sm text-muted-foreground truncate">
-            {conversation.last_message_preview || '暂无消息'}
+            {conversation.draft ? `草稿：${conversation.draft}` : conversation.last_message_preview || '暂无消息'}
           </span>
           <div className="flex items-center gap-1 flex-shrink-0">
             {conversation.pinned && (
               <Pin className="h-3 w-3 text-muted-foreground" />
+            )}
+            {conversation.is_muted && (
+              <BellOff className="h-3 w-3 text-muted-foreground" />
             )}
             {conversation.unread_count > 0 && (
               <span className="min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-xs flex items-center justify-center px-1">

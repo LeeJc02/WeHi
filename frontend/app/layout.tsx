@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { AuthProvider } from '@/lib/auth-context'
 import { ChatStoreProvider } from '@/lib/chat-store'
+import { ThemeProvider } from '@/components/providers/theme-provider'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
@@ -39,14 +40,16 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" suppressHydrationWarning>
       <body className="font-sans antialiased overflow-hidden">
-        <AuthProvider>
-          <ChatStoreProvider>
-            {children}
-            <Toaster />
-          </ChatStoreProvider>
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <ChatStoreProvider>
+              {children}
+              <Toaster />
+            </ChatStoreProvider>
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

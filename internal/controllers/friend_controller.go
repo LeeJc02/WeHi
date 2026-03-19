@@ -13,6 +13,7 @@ type FriendService interface {
 	CreateFriendRequest(userID, addresseeID uint64, message string) (*contracts.FriendRequestDTO, error)
 	ApproveFriendRequest(userID, requestID uint64) error
 	RejectFriendRequest(userID, requestID uint64) error
+	UpdateRemark(userID, friendID uint64, remarkName string) error
 }
 
 type FriendController struct {
@@ -99,4 +100,26 @@ func (ctl *FriendController) RejectFriendRequest(c *gin.Context) {
 		return
 	}
 	httpx.Success(c, gin.H{"status": "rejected"})
+}
+
+func (ctl *FriendController) UpdateRemark(c *gin.Context) {
+	user, _, ok := requireCurrentUser(c)
+	if !ok {
+		return
+	}
+	friendID, err := parseUintParam(c, "id")
+	if err != nil {
+		httpx.Fail(c, 400, err.Error())
+		return
+	}
+	var req contracts.UpdateFriendRemarkRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, 400, err.Error())
+		return
+	}
+	if err := ctl.service.UpdateRemark(user.ID, friendID, req.RemarkName); err != nil {
+		httpx.FailError(c, err)
+		return
+	}
+	httpx.Success(c, gin.H{"status": "updated"})
 }

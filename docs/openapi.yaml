@@ -37,6 +37,221 @@ components:
         id: { type: integer, format: int64 }
         username: { type: string }
         display_name: { type: string }
+        avatar_url: { type: string }
+
+    F:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        username: { type: string }
+        display_name: { type: string }
+        avatar_url: { type: string }
+        remark_name: { type: string }
+        is_ai_bot: { type: boolean }
+
+    AdminProfile:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        username: { type: string }
+        must_change_password: { type: boolean }
+
+    AdminAuth:
+      type: object
+      properties:
+        access_token: { type: string }
+        admin: { $ref: '#/components/schemas/AdminProfile' }
+
+    AdminLogin:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string }
+
+    AdminPwd:
+      type: object
+      required: [password]
+      properties:
+        password: { type: string }
+
+    AIProvider:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        api_key: { type: string }
+        base_url: { type: string }
+        models:
+          type: array
+          items: { type: string }
+
+    AIConfig:
+      type: object
+      properties:
+        bot:
+          type: object
+          properties:
+            enabled: { type: boolean }
+            username: { type: string }
+            display_name: { type: string }
+            system_prompt: { type: string }
+            default_provider: { type: string }
+            default_model: { type: string }
+            context_messages: { type: integer }
+            async_timeout_seconds: { type: integer }
+        providers:
+          type: object
+          properties:
+            zhipu: { $ref: '#/components/schemas/AIProvider' }
+            openai: { $ref: '#/components/schemas/AIProvider' }
+            anthropic: { $ref: '#/components/schemas/AIProvider' }
+        audit:
+          type: object
+          properties:
+            enabled: { type: boolean }
+            retention_days: { type: integer }
+
+    MonitorSvc:
+      type: object
+      properties:
+        name: { type: string }
+        healthy: { type: boolean }
+        status: { type: string }
+        error: { type: string }
+        checked_at: { type: string }
+
+    MonitorOverview:
+      type: object
+      properties:
+        services:
+          type: array
+          items: { $ref: '#/components/schemas/MonitorSvc' }
+        total_requests: { type: number }
+        client_errors: { type: number }
+        server_errors: { type: number }
+        average_latency_ms: { type: number }
+        websocket_connections: { type: number }
+        ai_retry_pending: { type: number }
+        ai_retry_completed: { type: number }
+        ai_retry_exhausted: { type: number }
+        snapshot_at: { type: string }
+
+    MonitorPoint:
+      type: object
+      properties:
+        timestamp: { type: string }
+        total_requests: { type: number }
+        client_errors: { type: number }
+        server_errors: { type: number }
+        average_latency_ms: { type: number }
+        websocket_connections: { type: number }
+        ai_retry_pending: { type: number }
+        ai_retry_completed: { type: number }
+        ai_retry_exhausted: { type: number }
+
+    MonitorTimeseries:
+      type: object
+      properties:
+        points:
+          type: array
+          items: { $ref: '#/components/schemas/MonitorPoint' }
+
+    AIAudit:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        user_id: { type: integer, format: int64 }
+        conversation_id: { type: integer, format: int64 }
+        request_id: { type: string }
+        provider: { type: string }
+        model: { type: string }
+        status: { type: string }
+        duration_ms: { type: integer }
+        input_tokens: { type: integer }
+        output_tokens: { type: integer }
+        total_tokens: { type: integer }
+        input_preview: { type: string }
+        output_preview: { type: string }
+        error_code: { type: string }
+        error_message: { type: string }
+        created_at: { type: string }
+
+    AIAuditDetail:
+      allOf:
+        - { $ref: '#/components/schemas/AIAudit' }
+        - type: object
+          properties:
+            request_payload_json: { type: string }
+            response_payload_json: { type: string }
+
+    AIRetryJob:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        user_id: { type: integer, format: int64 }
+        conversation_id: { type: integer, format: int64 }
+        status: { type: string }
+        attempt_count: { type: integer }
+        next_attempt_at: { type: string }
+        last_error: { type: string }
+        created_at: { type: string }
+        updated_at: { type: string }
+
+    MessageLookup:
+      type: object
+      properties:
+        message_id: { type: integer, format: int64 }
+        conversation_id: { type: integer, format: int64 }
+        sender_id: { type: integer, format: int64 }
+        client_msg_id: { type: string }
+
+    JourneyStage:
+      type: object
+      properties:
+        name: { type: string }
+        occurred_at: { type: string }
+        recipient_id: { type: integer, format: int64 }
+        note: { type: string }
+
+    MessageJourney:
+      type: object
+      properties:
+        message_id: { type: integer, format: int64 }
+        conversation_id: { type: integer, format: int64 }
+        client_msg_id: { type: string }
+        sender_id: { type: integer, format: int64 }
+        message_type: { type: string }
+        delivery_status: { type: string }
+        created_at: { type: string }
+        recalled_at: { type: string }
+        stages:
+          type: array
+          items: { $ref: '#/components/schemas/JourneyStage' }
+
+    ConsistencyMember:
+      type: object
+      properties:
+        user_id: { type: integer, format: int64 }
+        username: { type: string }
+        display_name: { type: string }
+        avatar_url: { type: string }
+        role: { type: string }
+        last_read_seq: { type: integer, format: int64 }
+        unread_count: { type: integer }
+        current_cursor: { type: integer, format: int64 }
+        online: { type: boolean }
+
+    Consistency:
+      type: object
+      properties:
+        conversation_id: { type: integer, format: int64 }
+        last_message_seq: { type: integer, format: int64 }
+        last_message_at: { type: string }
+        online_count: { type: integer }
+        current_event_lag: { type: integer, format: int64 }
+        members:
+          type: array
+          items: { $ref: '#/components/schemas/ConsistencyMember' }
 
     A:
       type: object
@@ -54,8 +269,6 @@ components:
         last_seen_at: { type: string }
         expires_at: { type: string }
         current: { type: boolean }
-
-    F: { $ref: '#/components/schemas/U' }
 
     FR:
       type: object
@@ -75,9 +288,13 @@ components:
         id: { type: integer, format: int64 }
         type: { type: string }
         name: { type: string }
+        announcement: { type: string }
         creator_id: { type: integer, format: int64 }
         member_count: { type: integer }
         pinned: { type: boolean }
+        pinned_at: { type: string }
+        is_muted: { type: boolean }
+        draft: { type: string }
         last_read_seq: { type: integer, format: int64 }
         unread_count: { type: integer }
         last_message_seq: { type: integer, format: int64 }
@@ -92,6 +309,8 @@ components:
         user_id: { type: integer, format: int64 }
         username: { type: string }
         display_name: { type: string }
+        avatar_url: { type: string }
+        remark_name: { type: string }
         role: { type: string }
         last_read_seq: { type: integer, format: int64 }
         joined_at: { type: string }
@@ -106,9 +325,33 @@ components:
         sender_id: { type: integer, format: int64 }
         message_type: { type: string }
         content: { type: string }
+        reply_to_message_id: { type: integer, format: int64 }
+        reply_to: { $ref: '#/components/schemas/MRRef' }
+        attachment: { $ref: '#/components/schemas/Att' }
         client_msg_id: { type: string }
         status: { type: string }
+        delivery_status: { type: string }
+        recalled_at: { type: string }
         created_at: { type: string }
+
+    Att:
+      type: object
+      properties:
+        object_key: { type: string }
+        url: { type: string }
+        filename: { type: string }
+        content_type: { type: string }
+        size_bytes: { type: integer, format: int64 }
+
+    MRRef:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        sender_id: { type: integer, format: int64 }
+        message_type: { type: string }
+        content: { type: string }
+        attachment: { $ref: '#/components/schemas/Att' }
+        recalled_at: { type: string }
 
     SH:
       type: object
@@ -148,6 +391,9 @@ components:
     SE:
       type: object
       properties:
+        event_id: { type: integer, format: int64 }
+        event_type: { type: string }
+        aggregate_id: { type: string }
         cursor: { type: integer, format: int64 }
         type: { type: string }
         payload: { type: object, additionalProperties: true }
@@ -204,6 +450,7 @@ components:
       required: [display_name]
       properties:
         display_name: { type: string }
+        avatar_url: { type: string }
 
     CFR:
       type: object
@@ -211,6 +458,11 @@ components:
       properties:
         addressee_id: { type: integer, format: int64 }
         message: { type: string }
+
+    UFR:
+      type: object
+      properties:
+        remark_name: { type: string }
 
     CDC:
       type: object
@@ -247,11 +499,13 @@ components:
       properties:
         user_id: { type: integer, format: int64 }
 
-    PIN:
+    UCS:
       type: object
-      required: [pinned]
       properties:
         pinned: { type: boolean }
+        is_muted: { type: boolean }
+        draft: { type: string }
+        announcement: { type: string }
 
     MSG:
       type: object
@@ -260,11 +514,52 @@ components:
         message_type: { type: string }
         content: { type: string }
         client_msg_id: { type: string }
+        reply_to_message_id: { type: integer, format: int64 }
+        attachment: { $ref: '#/components/schemas/Att' }
 
     MR:
       type: object
       properties:
         seq: { type: integer, format: int64 }
+
+    Typing:
+      type: object
+      required: [is_typing]
+      properties:
+        is_typing: { type: boolean }
+
+    UPR:
+      type: object
+      required: [filename, content_type, size_bytes]
+      properties:
+        filename: { type: string }
+        content_type: { type: string }
+        size_bytes: { type: integer, format: int64 }
+
+    UPS:
+      type: object
+      properties:
+        object_key: { type: string }
+        upload_path: { type: string }
+        method: { type: string }
+        headers:
+          type: object
+          additionalProperties: { type: string }
+        public_url: { type: string }
+
+    UCR:
+      type: object
+      required: [object_key, filename, content_type, size_bytes]
+      properties:
+        object_key: { type: string }
+        filename: { type: string }
+        content_type: { type: string }
+        size_bytes: { type: integer, format: int64 }
+
+    UCSP:
+      type: object
+      properties:
+        attachment: { $ref: '#/components/schemas/Att' }
 
     E_auth_ok:
       type: object
@@ -279,7 +574,7 @@ components:
     E_msg_new:
       type: object
       properties:
-        type: { type: string, enum: [message.new] }
+        type: { type: string, enum: [message.persisted] }
         payload:
           type: object
           properties:
@@ -290,10 +585,40 @@ components:
             message: { $ref: '#/components/schemas/M' }
             conversation: { $ref: '#/components/schemas/C' }
 
+    E_msg_accepted:
+      type: object
+      properties:
+        type: { type: string, enum: [message.accepted] }
+        payload:
+          type: object
+          properties:
+            recipients:
+              type: array
+              items: { type: integer, format: int64 }
+            conversation_id: { type: integer, format: int64 }
+            client_msg_id: { type: string }
+            accepted_at: { type: string }
+
+    E_msg_delivered:
+      type: object
+      properties:
+        type: { type: string, enum: [message.delivered] }
+        payload:
+          type: object
+          properties:
+            recipients:
+              type: array
+              items: { type: integer, format: int64 }
+            conversation_id: { type: integer, format: int64 }
+            message_id: { type: integer, format: int64 }
+            client_msg_id: { type: string }
+            delivery_status: { type: string }
+            updated_at: { type: string }
+
     E_read:
       type: object
       properties:
-        type: { type: string, enum: [conversation.read] }
+        type: { type: string, enum: [message.read] }
         payload:
           type: object
           properties:
@@ -303,6 +628,34 @@ components:
             conversation_id: { type: integer, format: int64 }
             reader_id: { type: integer, format: int64 }
             last_read_seq: { type: integer, format: int64 }
+
+    E_recalled:
+      type: object
+      properties:
+        type: { type: string, enum: [message.recalled] }
+        payload:
+          type: object
+          properties:
+            recipients:
+              type: array
+              items: { type: integer, format: int64 }
+            conversation_id: { type: integer, format: int64 }
+            message_id: { type: integer, format: int64 }
+            recalled_at: { type: string }
+
+    E_typing:
+      type: object
+      properties:
+        type: { type: string, enum: [typing.updated] }
+        payload:
+          type: object
+          properties:
+            recipients:
+              type: array
+              items: { type: integer, format: int64 }
+            conversation_id: { type: integer, format: int64 }
+            user_id: { type: integer, format: int64 }
+            is_typing: { type: boolean }
 
     E_fr:
       type: object
@@ -330,7 +683,11 @@ components:
     Event:
       oneOf:
         - { $ref: '#/components/schemas/E_auth_ok' }
+        - { $ref: '#/components/schemas/E_msg_accepted' }
         - { $ref: '#/components/schemas/E_msg_new' }
+        - { $ref: '#/components/schemas/E_msg_delivered' }
+        - { $ref: '#/components/schemas/E_recalled' }
+        - { $ref: '#/components/schemas/E_typing' }
         - { $ref: '#/components/schemas/E_read' }
         - { $ref: '#/components/schemas/E_fr' }
         - { $ref: '#/components/schemas/E_sync' }
@@ -433,6 +790,17 @@ paths:
           description: error
           content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
 
+  /api/v1/auth/logout-others:
+    post:
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200':
+          description: data=Status
+          content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
   /api/v1/users/me:
     get:
       security: [{ BearerAuth: [] }]
@@ -482,6 +850,25 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/F' }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/friends/{id}/remark:
+    patch:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/UFR' } } }
+      responses:
+        '200':
+          description: data=Status
+          content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } }
         default:
           description: error
           content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
@@ -699,8 +1086,8 @@ paths:
           description: error
           content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
 
-  /api/v1/conversations/{id}/pin:
-    post:
+  /api/v1/conversations/{id}/settings:
+    patch:
       security: [{ BearerAuth: [] }]
       parameters:
         - in: path
@@ -709,11 +1096,11 @@ paths:
           schema: { type: integer, format: int64 }
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: '#/components/schemas/PIN' } } }
+        content: { application/json: { schema: { $ref: '#/components/schemas/UCS' } } }
       responses:
         '200':
-          description: data=Status
-          content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } }
+          description: data=C
+          content: { application/json: { schema: { $ref: '#/components/schemas/C' } } }
         default:
           description: error
           content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
@@ -782,6 +1169,91 @@ paths:
           description: error
           content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
 
+  /api/v1/conversations/{id}/typing:
+    post:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/Typing' } } }
+      responses:
+        '200':
+          description: data=Status
+          content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/messages/{id}/recall:
+    post:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: data=Status
+          content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/uploads/presign:
+    post:
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/UPR' } } }
+      responses:
+        '200':
+          description: data=UPS
+          content: { application/json: { schema: { $ref: '#/components/schemas/UPS' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/uploads/object/{key}:
+    put:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '204':
+          description: uploaded
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/uploads/complete:
+    post:
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/UCR' } } }
+      responses:
+        '200':
+          description: data=UCSP
+          content: { application/json: { schema: { $ref: '#/components/schemas/UCSP' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
   /api/v1/search:
     get:
       security: [{ BearerAuth: [] }]
@@ -820,6 +1292,280 @@ paths:
         '200':
           description: data=SER
           content: { application/json: { schema: { $ref: '#/components/schemas/SER' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/admin/auth/login:
+    post:
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AdminLogin' } } }
+      responses:
+        '200':
+          description: data=AdminAuth
+          content: { application/json: { schema: { $ref: '#/components/schemas/AdminAuth' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/admin/auth/me:
+    get:
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200':
+          description: data=AdminProfile
+          content: { application/json: { schema: { $ref: '#/components/schemas/AdminProfile' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/admin/auth/change-password:
+    post:
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AdminPwd' } } }
+      responses:
+        '200':
+          description: data=Status
+          content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/admin/ai-config:
+    get:
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200':
+          description: data=AIConfig
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIConfig' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+    put:
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIConfig' } } }
+      responses:
+        '200':
+          description: data=AIConfig
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIConfig' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/admin/ai/retry-jobs:
+    get:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { in: query, name: limit, required: false, schema: { type: integer } }
+        - { in: query, name: status, required: false, schema: { type: string } }
+      responses:
+        '200':
+          description: data=AIRetryJob[]
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AIRetryJob' }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/admin/ai/retry-jobs/{id}:
+    get:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: data=AIRetryJob
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIRetryJob' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/admin/ai/retry-jobs/{id}/retry-now:
+    post:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: data=Status
+          content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/admin/ai/retry-jobs/retry-batch:
+    post:
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: data=Status
+          content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/admin/ai/retry-jobs/cleanup:
+    post:
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                statuses:
+                  type: array
+                  items: { type: string }
+      responses:
+        '200':
+          description: data=Status
+          content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/admin/monitor/overview:
+    get:
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200':
+          description: data=MonitorOverview
+          content: { application/json: { schema: { $ref: '#/components/schemas/MonitorOverview' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/admin/monitor/timeseries:
+    get:
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200':
+          description: data=MonitorTimeseries
+          content: { application/json: { schema: { $ref: '#/components/schemas/MonitorTimeseries' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/admin/audit/ai-calls:
+    get:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { in: query, name: limit, required: false, schema: { type: integer } }
+        - { in: query, name: status, required: false, schema: { type: string } }
+        - { in: query, name: provider, required: false, schema: { type: string } }
+        - { in: query, name: model, required: false, schema: { type: string } }
+        - { in: query, name: user_id, required: false, schema: { type: integer, format: int64 } }
+        - { in: query, name: conversation_id, required: false, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: data=AIAudit[]
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AIAudit' }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/admin/audit/ai-calls/{id}:
+    get:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: data=AIAuditDetail
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIAuditDetail' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/admin/messages/resolve:
+    get:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { in: query, name: client_msg_id, required: true, schema: { type: string } }
+        - { in: query, name: sender_id, required: false, schema: { type: integer, format: int64 } }
+        - { in: query, name: conversation_id, required: false, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: data=MessageLookup
+          content: { application/json: { schema: { $ref: '#/components/schemas/MessageLookup' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/admin/message-journey/{messageId}:
+    get:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { in: path, name: messageId, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: data=MessageJourney
+          content: { application/json: { schema: { $ref: '#/components/schemas/MessageJourney' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/admin/conversations/{id}/consistency:
+    get:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: data=Consistency
+          content: { application/json: { schema: { $ref: '#/components/schemas/Consistency' } } }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/admin/conversations/{id}/events:
+    get:
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+        - { in: query, name: limit, required: false, schema: { type: integer } }
+      responses:
+        '200':
+          description: data=SE[]
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SE' }
+        default:
+          description: error
+          content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }
+
+  /api/v1/admin/search/reindex:
+    post:
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200':
+          description: data=Status
+          content: { application/json: { schema: { $ref: '#/components/schemas/Status' } } }
         default:
           description: error
           content: { application/json: { schema: { $ref: '#/components/schemas/Err' } } }

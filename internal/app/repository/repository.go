@@ -29,6 +29,36 @@ func (r *Repository) CreateUser(user *User) error {
 	return r.db.Create(user).Error
 }
 
+func (r *Repository) CreateAdminUser(user *AdminUser) error {
+	return r.db.Create(user).Error
+}
+
+func (r *Repository) FindAdminByUsername(username string) (*AdminUser, error) {
+	var user AdminUser
+	if err := r.db.Where("username = ? AND deleted_at IS NULL", username).First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *Repository) FindAdminByID(id uint64) (*AdminUser, error) {
+	var user AdminUser
+	if err := r.db.Where("id = ? AND deleted_at IS NULL", id).First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *Repository) UpdateAdminPassword(id uint64, passwordHash string, mustChangePassword bool) error {
+	return r.db.Model(&AdminUser{}).
+		Where("id = ? AND deleted_at IS NULL", id).
+		Updates(map[string]any{
+			"password_hash":        passwordHash,
+			"must_change_password": mustChangePassword,
+			"updated_at":           time.Now(),
+		}).Error
+}
+
 func (r *Repository) FindUserByUsername(username string) (*User, error) {
 	var user User
 	if err := r.db.Where("username = ? AND deleted_at IS NULL", username).First(&user).Error; err != nil {
@@ -54,6 +84,16 @@ func (r *Repository) UpdateUserDisplayName(id uint64, displayName string) error 
 		}).Error
 }
 
+func (r *Repository) UpdateUserProfile(id uint64, displayName, avatarURL string) error {
+	return r.db.Model(&User{}).
+		Where("id = ? AND deleted_at IS NULL", id).
+		Updates(map[string]any{
+			"display_name": displayName,
+			"avatar_url":   avatarURL,
+			"updated_at":   time.Now(),
+		}).Error
+}
+
 func (r *Repository) ListUsers(excludeID uint64) ([]User, error) {
 	var users []User
 	err := r.db.Where("id <> ? AND deleted_at IS NULL", excludeID).Order("id asc").Find(&users).Error
@@ -63,12 +103,18 @@ func (r *Repository) ListUsers(excludeID uint64) ([]User, error) {
 func (r *Repository) ListFriends(userID uint64) ([]contracts.FriendDTO, error) {
 	var rows []contracts.FriendDTO
 	err := r.db.Table("friendships f").
-		Select("u.id, u.username, u.display_name").
+		Select("u.id, u.username, u.display_name, u.avatar_url, f.remark_name").
 		Joins("JOIN users u ON u.id = f.friend_id AND u.deleted_at IS NULL").
 		Where("f.user_id = ? AND f.deleted_at IS NULL", userID).
-		Order("u.display_name asc, u.username asc").
+		Order("CASE WHEN f.remark_name = '' THEN u.display_name ELSE f.remark_name END asc, u.username asc").
 		Scan(&rows).Error
 	return rows, err
+}
+
+func (r *Repository) UpdateFriendRemark(userID, friendID uint64, remarkName string) error {
+	return r.db.Model(&Friendship{}).
+		Where("user_id = ? AND friend_id = ? AND deleted_at IS NULL", userID, friendID).
+		Update("remark_name", remarkName).Error
 }
 
 func (r *Repository) CreateFriendRequest(request *FriendRequest) error {
@@ -108,6 +154,30 @@ func (r *Repository) FriendshipExists(userID, friendID uint64) (bool, error) {
 		Where("user_id = ? AND friend_id = ? AND deleted_at IS NULL", userID, friendID).
 		Count(&count).Error
 	return count > 0, err
+}
+
+func (r *Repository) EnsureFriendship(userID, friendID uint64) error {
+	if userID == 0 || friendID == 0 || userID == friendID {
+		return nil
+	}
+	now := time.Now()
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		row := Friendship{
+			UserID:    userID,
+			FriendID:  friendID,
+			CreatedAt: now,
+		}
+		if err := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "user_id"}, {Name: "friend_id"}},
+			DoUpdates: clause.Assignments(map[string]any{"deleted_at": gorm.Expr("NULL")}),
+		}).Create(&row).Error; err != nil {
+			return err
+		}
+		return tx.Unscoped().
+			Model(&Friendship{}).
+			Where("user_id = ? AND friend_id = ?", userID, friendID).
+			Update("deleted_at", gorm.Expr("NULL")).Error
+	})
 }
 
 func (r *Repository) AcceptFriendRequest(request *FriendRequest) error {
@@ -221,7 +291,11 @@ func (r *Repository) restoreDirectConversationMembers(conversation *Conversation
 
 func (r *Repository) CreateConversation(conversation *Conversation, members []ConversationMember) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(conversation).Error; err != nil {
+		createTx := tx
+		if strings.TrimSpace(conversation.DirectKey) == "" {
+			createTx = createTx.Omit("DirectKey")
+		}
+		if err := createTx.Create(conversation).Error; err != nil {
 			return err
 		}
 		for idx := range members {
@@ -258,16 +332,19 @@ type ConversationMemberRow struct {
 	UserID      uint64
 	Username    string
 	DisplayName string
+	AvatarURL   string
+	RemarkName  string
 	Role        string
 	LastReadSeq uint64
 	JoinedAt    time.Time
 }
 
-func (r *Repository) ListConversationMemberProfiles(conversationID uint64) ([]ConversationMemberRow, error) {
+func (r *Repository) ListConversationMemberProfiles(conversationID, viewerID uint64) ([]ConversationMemberRow, error) {
 	var rows []ConversationMemberRow
 	err := r.db.Table("conversation_members cm").
-		Select("cm.user_id, u.username, u.display_name, cm.role, cm.last_read_seq, cm.joined_at").
+		Select("cm.user_id, u.username, u.display_name, u.avatar_url, COALESCE(f.remark_name, '') AS remark_name, cm.role, cm.last_read_seq, cm.joined_at").
 		Joins("JOIN users u ON u.id = cm.user_id AND u.deleted_at IS NULL").
+		Joins("LEFT JOIN friendships f ON f.user_id = ? AND f.friend_id = cm.user_id AND f.deleted_at IS NULL", viewerID).
 		Where("cm.conversation_id = ? AND cm.deleted_at IS NULL", conversationID).
 		Order("cm.id asc").
 		Scan(&rows).Error
@@ -306,9 +383,13 @@ type conversationListRow struct {
 	ID                 uint64
 	Type               string
 	Name               string
+	Announcement       string
 	CreatorID          uint64
 	MemberCount        int64
 	Pinned             bool
+	PinnedAt           *time.Time
+	IsMuted            bool
+	Draft              string
 	LastReadSeq        uint64
 	UnreadCount        int64
 	LastMessageSeq     uint64
@@ -325,9 +406,13 @@ func (r *Repository) ListConversations(userID uint64) ([]conversationListRow, er
 			c.id,
 			c.type,
 			c.name,
+			c.announcement,
 			c.creator_id,
 			member_stats.member_count,
-			CASE WHEN cp.id IS NULL THEN FALSE ELSE TRUE END AS pinned,
+			CASE WHEN cs.pinned_at IS NULL THEN FALSE ELSE TRUE END AS pinned,
+			cs.pinned_at,
+			COALESCE(cs.is_muted, FALSE) AS is_muted,
+			COALESCE(cs.draft, '') AS draft,
 			cm.last_read_seq,
 			COALESCE(unread_stats.unread_count, 0) AS unread_count,
 			c.last_message_seq,
@@ -343,8 +428,8 @@ func (r *Repository) ListConversations(userID uint64) ([]conversationListRow, er
 			WHERE deleted_at IS NULL
 			GROUP BY conversation_id
 		) member_stats ON member_stats.conversation_id = c.id
-		LEFT JOIN conversation_pins cp
-			ON cp.conversation_id = c.id AND cp.user_id = ? 
+		LEFT JOIN conversation_settings cs
+			ON cs.conversation_id = c.id AND cs.user_id = ? AND cs.deleted_at IS NULL
 		LEFT JOIN (
 			SELECT m.conversation_id, COUNT(*) AS unread_count
 			FROM messages m
@@ -357,8 +442,8 @@ func (r *Repository) ListConversations(userID uint64) ([]conversationListRow, er
 		) unread_stats ON unread_stats.conversation_id = c.id
 		WHERE cm.user_id = ? AND cm.deleted_at IS NULL
 		ORDER BY
-			CASE WHEN cp.id IS NULL THEN 1 ELSE 0 END,
-			cp.pinned_at DESC,
+			CASE WHEN cs.pinned_at IS NULL THEN 1 ELSE 0 END,
+			cs.pinned_at DESC,
 			c.updated_at DESC,
 			c.id DESC
 	`, userID, userID, userID, userID).Scan(&rows).Error
@@ -375,18 +460,72 @@ func (r *Repository) AddConversationMembers(conversationID uint64, memberIDs []u
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		now := time.Now()
 		for _, memberID := range memberIDs {
-			member := ConversationMember{
-				ConversationID: conversationID,
-				UserID:         memberID,
-				Role:           "member",
-				JoinedAt:       now,
-				UpdatedAt:      now,
+			var existing ConversationMember
+			err := tx.Unscoped().
+				Where("conversation_id = ? AND user_id = ?", conversationID, memberID).
+				First(&existing).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				member := ConversationMember{
+					ConversationID: conversationID,
+					UserID:         memberID,
+					Role:           "member",
+					JoinedAt:       now,
+					UpdatedAt:      now,
+				}
+				if err := tx.Create(&member).Error; err != nil {
+					return err
+				}
+				continue
 			}
-			if err := tx.Create(&member).Error; err != nil {
+			if err != nil {
+				return err
+			}
+			if !existing.DeletedAt.Valid {
+				continue
+			}
+			if err := tx.Unscoped().
+				Model(&ConversationMember{}).
+				Where("id = ?", existing.ID).
+				Updates(map[string]any{
+					"deleted_at":    gorm.Expr("NULL"),
+					"updated_at":    now,
+					"joined_at":     now,
+					"role":          "member",
+					"last_read_seq": 0,
+				}).Error; err != nil {
 				return err
 			}
 		}
 		return tx.Model(&Conversation{}).Where("id = ?", conversationID).Update("updated_at", now).Error
+	})
+}
+
+func (r *Repository) EnsureConversationPinned(userID, conversationID uint64) error {
+	now := time.Now()
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var setting ConversationSetting
+		err := tx.
+			Where("conversation_id = ? AND user_id = ? AND deleted_at IS NULL", conversationID, userID).
+			First(&setting).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return tx.Create(&ConversationSetting{
+				ConversationID: conversationID,
+				UserID:         userID,
+				PinnedAt:       &now,
+				CreatedAt:      now,
+				UpdatedAt:      now,
+			}).Error
+		}
+		if err != nil {
+			return err
+		}
+		return tx.Model(&ConversationSetting{}).
+			Where("id = ?", setting.ID).
+			Updates(map[string]any{
+				"pinned_at":  now,
+				"updated_at": now,
+				"deleted_at": gorm.Expr("NULL"),
+			}).Error
 	})
 }
 
@@ -401,19 +540,97 @@ func (r *Repository) RemoveConversationMember(conversationID, userID uint64) err
 	})
 }
 
+func (r *Repository) DeleteGroupConversation(conversationID uint64, aggregateID string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("aggregate_id = ?", strings.TrimSpace(aggregateID)).Delete(&SyncEvent{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("conversation_id = ?", conversationID).Delete(&AIAuditLog{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Unscoped().Where("conversation_id = ?", conversationID).Delete(&AIRetryJob{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Unscoped().Where("conversation_id = ?", conversationID).Delete(&ConversationSetting{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("conversation_id = ?", conversationID).Delete(&ConversationPin{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Unscoped().Where("conversation_id = ?", conversationID).Delete(&Message{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Unscoped().Where("conversation_id = ?", conversationID).Delete(&ConversationMember{}).Error; err != nil {
+			return err
+		}
+		return tx.Unscoped().Where("id = ?", conversationID).Delete(&Conversation{}).Error
+	})
+}
+
 func (r *Repository) SetConversationMemberRole(conversationID, userID uint64, role string) error {
 	return r.db.Model(&ConversationMember{}).
 		Where("conversation_id = ? AND user_id = ? AND deleted_at IS NULL", conversationID, userID).
 		Updates(map[string]any{"role": role, "updated_at": time.Now()}).Error
 }
 
-func (r *Repository) SetPin(userID, conversationID uint64, pinned bool) error {
-	if pinned {
-		return r.db.Where("user_id = ? AND conversation_id = ?", userID, conversationID).
-			Assign(ConversationPin{PinnedAt: time.Now()}).
-			FirstOrCreate(&ConversationPin{}).Error
-	}
-	return r.db.Where("user_id = ? AND conversation_id = ?", userID, conversationID).Delete(&ConversationPin{}).Error
+func (r *Repository) UpdateConversationSettings(userID, conversationID uint64, pinned, isMuted *bool, draft *string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		now := time.Now()
+		var setting ConversationSetting
+		err := tx.
+			Where("conversation_id = ? AND user_id = ? AND deleted_at IS NULL", conversationID, userID).
+			First(&setting).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			setting = ConversationSetting{
+				ConversationID: conversationID,
+				UserID:         userID,
+				CreatedAt:      now,
+				UpdatedAt:      now,
+			}
+			if draft != nil {
+				setting.Draft = *draft
+			}
+			if isMuted != nil {
+				setting.IsMuted = *isMuted
+			}
+			if pinned != nil && *pinned {
+				setting.PinnedAt = &now
+			}
+			return tx.Create(&setting).Error
+		}
+		if err != nil {
+			return err
+		}
+
+		updates := map[string]any{
+			"updated_at": now,
+		}
+		if draft != nil {
+			updates["draft"] = *draft
+		}
+		if isMuted != nil {
+			updates["is_muted"] = *isMuted
+		}
+		if pinned != nil {
+			if *pinned {
+				updates["pinned_at"] = now
+			} else {
+				updates["pinned_at"] = gorm.Expr("NULL")
+			}
+		}
+		return tx.Model(&ConversationSetting{}).
+			Where("id = ?", setting.ID).
+			Updates(updates).Error
+	})
+}
+
+func (r *Repository) UpdateConversationAnnouncement(conversationID uint64, announcement string) error {
+	return r.db.Model(&Conversation{}).
+		Where("id = ? AND deleted_at IS NULL", conversationID).
+		Updates(map[string]any{
+			"announcement": announcement,
+			"updated_at":   time.Now(),
+		}).Error
 }
 
 func (r *Repository) ListMessages(conversationID uint64, beforeSeq uint64, limit int) ([]Message, error) {
@@ -429,38 +646,93 @@ func (r *Repository) ListMessages(conversationID uint64, beforeSeq uint64, limit
 	return messages, err
 }
 
-func (r *Repository) SendMessage(conversationID, senderID uint64, messageType, content, clientMsgID string) (*Message, *Conversation, error) {
+func (r *Repository) FindMessageByID(id uint64) (*Message, error) {
+	var message Message
+	if err := r.db.Where("id = ? AND deleted_at IS NULL", id).First(&message).Error; err != nil {
+		return nil, err
+	}
+	return &message, nil
+}
+
+func (r *Repository) FindMessagesByIDs(ids []uint64) ([]Message, error) {
+	if len(ids) == 0 {
+		return []Message{}, nil
+	}
+	var rows []Message
+	err := r.db.Where("id IN ? AND deleted_at IS NULL", ids).Find(&rows).Error
+	return rows, err
+}
+
+func (r *Repository) FindMessageByClientMsgID(senderID uint64, clientMsgID string) (*Message, error) {
+	var message Message
+	if err := r.db.Where("sender_id = ? AND client_msg_id = ? AND deleted_at IS NULL", senderID, clientMsgID).First(&message).Error; err != nil {
+		return nil, err
+	}
+	return &message, nil
+}
+
+func (r *Repository) FindMessageByClientMsgIDForAdmin(clientMsgID string, senderID, conversationID uint64) (*Message, error) {
+	query := r.db.Where("client_msg_id = ? AND deleted_at IS NULL", clientMsgID)
+	if senderID > 0 {
+		query = query.Where("sender_id = ?", senderID)
+	}
+	if conversationID > 0 {
+		query = query.Where("conversation_id = ?", conversationID)
+	}
+	var message Message
+	if err := query.Order("id desc").First(&message).Error; err != nil {
+		return nil, err
+	}
+	return &message, nil
+}
+
+func (r *Repository) SendMessage(conversationID, senderID uint64, messageType, content, clientMsgID string, replyToMessageID *uint64, attachmentJSON string) (*Message, *Conversation, bool, error) {
 	var output Message
 	var conversation Conversation
+	created := false
 	err := r.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("id = ? AND deleted_at IS NULL", conversationID).
 			First(&conversation).Error; err != nil {
 			return err
 		}
+		if clientMsgID != "" {
+			var existing Message
+			if err := tx.Where("sender_id = ? AND client_msg_id = ? AND deleted_at IS NULL", senderID, clientMsgID).First(&existing).Error; err == nil {
+				output = existing
+				return nil
+			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+		}
 		nextSeq := conversation.LastMessageSeq + 1
 		now := time.Now()
 		output = Message{
-			ConversationID: conversationID,
-			Seq:            nextSeq,
-			SenderID:       senderID,
-			MessageType:    messageType,
-			Content:        content,
-			ClientMsgID:    clientMsgID,
-			Status:         "sent",
-			CreatedAt:      now,
-			UpdatedAt:      now,
+			ConversationID:   conversationID,
+			Seq:              nextSeq,
+			SenderID:         senderID,
+			MessageType:      messageType,
+			Content:          content,
+			ReplyToMessageID: replyToMessageID,
+			AttachmentJSON:   attachmentJSON,
+			ClientMsgID:      clientMsgID,
+			Status:           "sent",
+			DeliveryStatus:   "sent",
+			CreatedAt:        now,
+			UpdatedAt:        now,
 		}
 		if err := tx.Create(&output).Error; err != nil {
 			return err
 		}
+		created = true
+		preview := buildMessagePreview(messageType, content, attachmentJSON, false)
 		if err := tx.Model(&Conversation{}).
 			Where("id = ?", conversationID).
 			Updates(map[string]any{
 				"last_message_seq":     nextSeq,
 				"last_message_sender":  senderID,
 				"last_message_type":    messageType,
-				"last_message_preview": truncate(content, 255),
+				"last_message_preview": preview,
 				"last_message_at":      now,
 				"updated_at":           now,
 			}).Error; err != nil {
@@ -469,12 +741,66 @@ func (r *Repository) SendMessage(conversationID, senderID uint64, messageType, c
 		conversation.LastMessageSeq = nextSeq
 		conversation.LastMessageSender = senderID
 		conversation.LastMessageType = messageType
-		conversation.LastMessagePreview = truncate(content, 255)
+		conversation.LastMessagePreview = preview
 		conversation.LastMessageAt = &now
 		conversation.UpdatedAt = now
 		return nil
 	})
-	return &output, &conversation, err
+	return &output, &conversation, created, err
+}
+
+func (r *Repository) RecallMessage(messageID uint64) (*Message, error) {
+	var output Message
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND deleted_at IS NULL", messageID).
+			First(&output).Error; err != nil {
+			return err
+		}
+		now := time.Now()
+		if err := tx.Model(&Message{}).
+			Where("id = ?", messageID).
+			Updates(map[string]any{
+				"recalled_at": now,
+				"updated_at":  now,
+			}).Error; err != nil {
+			return err
+		}
+		output.RecalledAt = &now
+		return tx.Model(&Conversation{}).
+			Where("id = ? AND last_message_seq = ?", output.ConversationID, output.Seq).
+			Updates(map[string]any{
+				"last_message_preview": "[消息已撤回]",
+				"updated_at":           now,
+			}).Error
+	})
+	return &output, err
+}
+
+func (r *Repository) UpdateMessageDeliveryStatus(messageID uint64, deliveryStatus string) (*Message, error) {
+	var output Message
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND deleted_at IS NULL", messageID).
+			First(&output).Error; err != nil {
+			return err
+		}
+		now := time.Now()
+		if err := tx.Model(&Message{}).
+			Where("id = ?", messageID).
+			Updates(map[string]any{
+				"status":          deliveryStatus,
+				"delivery_status": deliveryStatus,
+				"updated_at":      now,
+			}).Error; err != nil {
+			return err
+		}
+		output.Status = deliveryStatus
+		output.DeliveryStatus = deliveryStatus
+		output.UpdatedAt = now
+		return nil
+	})
+	return &output, err
 }
 
 func (r *Repository) MarkRead(conversationID, userID, seq uint64) error {
@@ -513,7 +839,7 @@ func (r *Repository) ListConversationsForReindex() ([]Conversation, error) {
 	return rows, err
 }
 
-func (r *Repository) AppendSyncEvents(userIDs []uint64, eventType string, payload any) error {
+func (r *Repository) AppendSyncEvents(userIDs []uint64, eventType, aggregateID string, payload any) error {
 	userIDs = uniqueUint64s(userIDs)
 	if len(userIDs) == 0 {
 		return nil
@@ -526,10 +852,11 @@ func (r *Repository) AppendSyncEvents(userIDs []uint64, eventType string, payloa
 	rows := make([]SyncEvent, 0, len(userIDs))
 	for _, userID := range userIDs {
 		rows = append(rows, SyncEvent{
-			UserID:    userID,
-			EventType: eventType,
-			Payload:   string(body),
-			CreatedAt: now,
+			UserID:      userID,
+			EventType:   eventType,
+			AggregateID: aggregateID,
+			Payload:     string(body),
+			CreatedAt:   now,
 		})
 	}
 	return r.db.Create(&rows).Error
@@ -560,6 +887,230 @@ func (r *Repository) ListSyncEvents(userID, cursor uint64, limit int) ([]SyncEve
 		return nil, 0, err
 	}
 	return rows, currentCursor, nil
+}
+
+func (r *Repository) ListSyncEventsByAggregate(aggregateID string, limit int) ([]SyncEvent, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 200
+	}
+	var rows []SyncEvent
+	err := r.db.Where("aggregate_id = ?", aggregateID).
+		Order("id asc").
+		Limit(limit).
+		Find(&rows).Error
+	return rows, err
+}
+
+type ConversationReadStateRow struct {
+	UserID        uint64
+	LastReadSeq   uint64
+	UnreadCount   int64
+	Online        bool
+	DisplayName   string
+	Username      string
+	AvatarURL     string
+	RemarkName    string
+	Role          string
+	CurrentCursor uint64
+}
+
+func (r *Repository) ListConversationReadStates(conversationID uint64) ([]ConversationReadStateRow, error) {
+	var rows []ConversationReadStateRow
+	err := r.db.Raw(`
+		SELECT
+			cm.user_id,
+			cm.last_read_seq,
+			COALESCE(unread_stats.unread_count, 0) AS unread_count,
+			u.display_name,
+			u.username,
+			u.avatar_url,
+			cm.role,
+			COALESCE(sync_stats.current_cursor, 0) AS current_cursor
+		FROM conversation_members cm
+		JOIN users u ON u.id = cm.user_id AND u.deleted_at IS NULL
+		LEFT JOIN (
+			SELECT cm2.user_id, cm2.conversation_id, COUNT(*) AS unread_count
+			FROM messages m
+			JOIN conversation_members cm2
+				ON cm2.conversation_id = m.conversation_id AND cm2.deleted_at IS NULL
+			WHERE m.deleted_at IS NULL
+				AND m.seq > cm2.last_read_seq
+				AND m.sender_id <> cm2.user_id
+			GROUP BY cm2.user_id, cm2.conversation_id
+		) unread_stats ON unread_stats.user_id = cm.user_id AND unread_stats.conversation_id = cm.conversation_id
+		LEFT JOIN (
+			SELECT user_id, MAX(id) AS current_cursor
+			FROM sync_events
+			GROUP BY user_id
+		) sync_stats ON sync_stats.user_id = cm.user_id
+		WHERE cm.conversation_id = ? AND cm.deleted_at IS NULL
+		ORDER BY cm.id ASC
+	`, conversationID).Scan(&rows).Error
+	return rows, err
+}
+
+func (r *Repository) CreateAIAuditLog(log *AIAuditLog) error {
+	return r.db.Create(log).Error
+}
+
+func (r *Repository) UpdateAIAuditLog(id uint64, updates map[string]any) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	return r.db.Model(&AIAuditLog{}).
+		Where("id = ?", id).
+		Updates(updates).Error
+}
+
+func (r *Repository) FindAIAuditLogByID(id uint64) (*AIAuditLog, error) {
+	var row AIAuditLog
+	if err := r.db.Where("id = ?", id).First(&row).Error; err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (r *Repository) ListAIAuditLogs(limit int, status, provider, model string, userID, conversationID uint64) ([]AIAuditLog, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	query := r.db.Model(&AIAuditLog{})
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if provider != "" {
+		query = query.Where("provider = ?", provider)
+	}
+	if model != "" {
+		query = query.Where("model = ?", model)
+	}
+	if userID > 0 {
+		query = query.Where("user_id = ?", userID)
+	}
+	if conversationID > 0 {
+		query = query.Where("conversation_id = ?", conversationID)
+	}
+	var rows []AIAuditLog
+	err := query.Order("id desc").Limit(limit).Find(&rows).Error
+	return rows, err
+}
+
+func (r *Repository) DeleteAIAuditLogsBefore(before time.Time) error {
+	return r.db.Where("created_at < ?", before).Delete(&AIAuditLog{}).Error
+}
+
+func (r *Repository) CreateAIRetryJob(job *AIRetryJob) error {
+	return r.db.Create(job).Error
+}
+
+func (r *Repository) ListPendingAIRetryJobs(limit int, now time.Time) ([]AIRetryJob, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	var rows []AIRetryJob
+	err := r.db.Where("status = ? AND next_attempt_at <= ? AND deleted_at IS NULL", "pending", now).
+		Order("next_attempt_at asc, id asc").
+		Limit(limit).
+		Find(&rows).Error
+	return rows, err
+}
+
+func (r *Repository) UpdateAIRetryJob(id uint64, updates map[string]any) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	updates["updated_at"] = time.Now()
+	return r.db.Model(&AIRetryJob{}).Where("id = ? AND deleted_at IS NULL", id).Updates(updates).Error
+}
+
+func (r *Repository) UpdateAIRetryJobs(ids []uint64, updates map[string]any) error {
+	if len(ids) == 0 || len(updates) == 0 {
+		return nil
+	}
+	updates["updated_at"] = time.Now()
+	return r.db.Model(&AIRetryJob{}).
+		Where("id IN ? AND deleted_at IS NULL", ids).
+		Updates(updates).Error
+}
+
+func (r *Repository) FindAIRetryJobByID(id uint64) (*AIRetryJob, error) {
+	var row AIRetryJob
+	if err := r.db.Where("id = ? AND deleted_at IS NULL", id).First(&row).Error; err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (r *Repository) ListAIRetryJobs(limit int, status string) ([]AIRetryJob, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	query := r.db.Where("deleted_at IS NULL")
+	if strings.TrimSpace(status) != "" {
+		query = query.Where("status = ?", strings.TrimSpace(status))
+	}
+	var rows []AIRetryJob
+	err := query.Order("id desc").Limit(limit).Find(&rows).Error
+	return rows, err
+}
+
+func (r *Repository) DeleteAIRetryJobsByStatuses(statuses []string) error {
+	cleaned := make([]string, 0, len(statuses))
+	for _, status := range statuses {
+		status = strings.TrimSpace(status)
+		if status != "" {
+			cleaned = append(cleaned, status)
+		}
+	}
+	if len(cleaned) == 0 {
+		return nil
+	}
+	return r.db.Where("status IN ? AND deleted_at IS NULL", cleaned).Delete(&AIRetryJob{}).Error
+}
+
+func (r *Repository) DeleteAIRetryJobsBefore(statuses []string, before time.Time) error {
+	cleaned := make([]string, 0, len(statuses))
+	for _, status := range statuses {
+		status = strings.TrimSpace(status)
+		if status != "" {
+			cleaned = append(cleaned, status)
+		}
+	}
+	if len(cleaned) == 0 {
+		return nil
+	}
+	return r.db.Where("status IN ? AND updated_at < ? AND deleted_at IS NULL", cleaned, before).Delete(&AIRetryJob{}).Error
+}
+
+func (r *Repository) CountAIRetryJobsByStatus(statuses []string) (map[string]int64, error) {
+	result := make(map[string]int64, len(statuses))
+	cleaned := make([]string, 0, len(statuses))
+	for _, status := range statuses {
+		status = strings.TrimSpace(status)
+		if status != "" {
+			cleaned = append(cleaned, status)
+			result[status] = 0
+		}
+	}
+	if len(cleaned) == 0 {
+		return result, nil
+	}
+	type row struct {
+		Status string
+		Count  int64
+	}
+	var rows []row
+	if err := r.db.Model(&AIRetryJob{}).
+		Select("status, COUNT(*) AS count").
+		Where("status IN ? AND deleted_at IS NULL", cleaned).
+		Group("status").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		result[row.Status] = row.Count
+	}
+	return result, nil
 }
 
 func (r *Repository) SearchMessages(conversationIDs []uint64, query string, offset, limit int) ([]contracts.SearchMessageHit, error) {
@@ -630,4 +1181,24 @@ func truncate(value string, max int) string {
 		return value
 	}
 	return value[:max]
+}
+
+func buildMessagePreview(messageType, content, attachmentJSON string, recalled bool) string {
+	if recalled {
+		return "[消息已撤回]"
+	}
+	switch messageType {
+	case "image":
+		return "[图片]"
+	case "file":
+		if attachmentJSON != "" {
+			var attachment contracts.AttachmentDTO
+			if json.Unmarshal([]byte(attachmentJSON), &attachment) == nil && attachment.Filename != "" {
+				return truncate("[文件] "+attachment.Filename, 255)
+			}
+		}
+		return "[文件]"
+	default:
+		return truncate(content, 255)
+	}
 }

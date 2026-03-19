@@ -23,11 +23,18 @@ type Config struct {
 	ElasticsearchMessagesIndex      string
 	ElasticsearchConversationsIndex string
 
-	JWTIssuer       string
-	JWTSecret       string
-	AccessTokenTTL  time.Duration
-	RefreshTokenTTL time.Duration
-	CORSOrigins     []string
+	JWTIssuer          string
+	JWTSecret          string
+	AccessTokenTTL     time.Duration
+	RefreshTokenTTL    time.Duration
+	CORSOrigins        []string
+	UploadsDir         string
+	AIConfigPath       string
+	AuthServiceURL     string
+	APIServiceURL      string
+	RealtimeServiceURL string
+	OTELExporter       string
+	OTELEndpoint       string
 }
 
 func Load(serviceName, defaultPort string) Config {
@@ -47,6 +54,13 @@ func Load(serviceName, defaultPort string) Config {
 		AccessTokenTTL:                  durationEnv("ACCESS_TOKEN_TTL", 15*time.Minute),
 		RefreshTokenTTL:                 durationEnv("REFRESH_TOKEN_TTL", 7*24*time.Hour),
 		CORSOrigins:                     splitCSV(getEnv("CORS_ORIGINS", "http://127.0.0.1:5173,http://localhost:5173")),
+		UploadsDir:                      getEnv("UPLOADS_DIR", ".runtime/uploads"),
+		AIConfigPath:                    getEnv("AI_CONFIG_PATH", "config/ai.yaml"),
+		AuthServiceURL:                  getEnv("AUTH_SERVICE_URL", "http://127.0.0.1:8081"),
+		APIServiceURL:                   getEnv("API_SERVICE_URL", "http://127.0.0.1:8082"),
+		RealtimeServiceURL:              getEnv("REALTIME_SERVICE_URL", "http://127.0.0.1:8083"),
+		OTELExporter:                    getEnv("OTEL_EXPORTER", "none"),
+		OTELEndpoint:                    strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")),
 	}
 }
 
