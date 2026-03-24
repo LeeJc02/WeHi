@@ -2,6 +2,9 @@
 .idea/
 
 .runtime/
+doc/
+docs/
+deploy/compose/docker-compose.isolated-test.yml
 
 frontend/node_modules/
 frontend/.next/
