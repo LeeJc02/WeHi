@@ -26,6 +26,8 @@ type Client struct {
 	useRedisBus bool
 }
 
+// New keeps one messaging interface for both broker-backed topics and the
+// lightweight Redis Pub/Sub mode used by local environments.
 func New(url, exchange string) (*Client, error) {
 	if strings.HasPrefix(url, "redis://") {
 		parsed, err := urlpkg(url)
@@ -85,6 +87,8 @@ func (c *Client) PublishJSON(routingKey string, payload any) error {
 	return c.PublishJSONWithContext(context.Background(), routingKey, payload)
 }
 
+// PublishJSONWithContext preserves trace context on AMQP publishes and uses the
+// same routing-key contract when the client falls back to Redis channels.
 func (c *Client) PublishJSONWithContext(ctx context.Context, routingKey string, payload any) error {
 	if c == nil {
 		return nil
@@ -118,6 +122,8 @@ func (c *Client) PublishJSONWithContext(ctx context.Context, routingKey string, 
 	})
 }
 
+// Consume binds one handler to every requested routing key so downstream
+// services can fan out lifecycle events without knowing the transport details.
 func (c *Client) Consume(queue string, bindings []string, handler func(ctx context.Context, routingKey string, body []byte) error) error {
 	if c.useRedisBus {
 		channels := make([]string, 0, len(bindings))

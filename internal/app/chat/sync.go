@@ -6,6 +6,8 @@ import (
 	"awesomeproject/pkg/contracts"
 )
 
+// emitSyncEvent persists a user-scoped replay event and nudges online clients to
+// pull the delta stream so websocket delivery and offline compensation converge.
 func (d *dependencies) emitSyncEvent(userIDs []uint64, eventType, aggregateID string, payload any) {
 	userIDs = uniqueIDs(userIDs)
 	if len(userIDs) == 0 {
@@ -19,6 +21,8 @@ func (d *dependencies) emitSyncEvent(userIDs []uint64, eventType, aggregateID st
 	}
 }
 
+// emitConversationUpsert rebuilds each recipient's conversation summary so the
+// sync stream always carries data in the receiver's own permission context.
 func (s *ConversationService) emitConversationUpsert(conversationID uint64, userIDs []uint64) {
 	for _, userID := range uniqueIDs(userIDs) {
 		dto, err := s.GetConversationSummary(userID, conversationID)

@@ -1,0 +1,133 @@
+name: Release Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Optional tag override
+        required: false
+        type: string
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish-services:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image_name: migrate
+            dockerfile: Dockerfile.service
+            service_path: ./cmd/migrate
+          - image_name: auth-service
+            dockerfile: Dockerfile.service
+            service_path: ./services/auth
+          - image_name: api-service
+            dockerfile: Dockerfile.service
+            service_path: ./services/api
+          - image_name: realtime-service
+            dockerfile: Dockerfile.service
+            service_path: ./services/realtime
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive image prefix
+        id: vars
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          repo="${GITHUB_REPOSITORY#*/}"
+          repo="${repo,,}"
+          echo "image_prefix=ghcr.io/${owner}/${repo}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: tags
+        run: |
+          base="${{ steps.vars.outputs.image_prefix }}/${{ matrix.image_name }}"
+          tags="${base}:sha-${GITHUB_SHA}"
+          if [[ "${GITHUB_REF_TYPE}" == "branch" && "${GITHUB_REF_NAME}" == "main" ]]; then
+            tags="${tags},${base}:latest"
+          fi
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            tags="${tags},${base}:${GITHUB_REF_NAME}"
+          fi
+          if [[ -n "${{ github.event.inputs.image_tag }}" ]]; then
+            tags="${tags},${base}:${{ github.event.inputs.image_tag }}"
+          fi
+          echo "value=${tags}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.value }}
+          build-args: |
+            SERVICE_PATH=${{ matrix.service_path }}
+
+  publish-frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive image prefix
+        id: vars
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          repo="${GITHUB_REPOSITORY#*/}"
+          repo="${repo,,}"
+          echo "image_prefix=ghcr.io/${owner}/${repo}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: tags
+        run: |
+          base="${{ steps.vars.outputs.image_prefix }}/frontend"
+          tags="${base}:sha-${GITHUB_SHA}"
+          if [[ "${GITHUB_REF_TYPE}" == "branch" && "${GITHUB_REF_NAME}" == "main" ]]; then
+            tags="${tags},${base}:latest"
+          fi
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            tags="${tags},${base}:${GITHUB_REF_NAME}"
+          fi
+          if [[ -n "${{ github.event.inputs.image_tag }}" ]]; then
+            tags="${tags},${base}:${{ github.event.inputs.image_tag }}"
+          fi
+          echo "value=${tags}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.frontend
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.value }}

@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 GOCACHE ?= $(CURDIR)/.runtime/go-build
 
-.PHONY: start refresh stop smoke verify frontend-install frontend-lint frontend-build go-test local-up local-smoke local-down
+.PHONY: start refresh stop smoke verify frontend-install frontend-lint frontend-build go-test local-up local-smoke local-down release-up release-down
 
 start:
 	./scripts/compose_up.sh
@@ -40,3 +40,9 @@ local-smoke:
 
 local-down:
 	./scripts/compose_down.sh
+
+release-up:
+	./scripts/release_up.sh
+
+release-down:
+	./scripts/release_down.sh

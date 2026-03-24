@@ -7,6 +7,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// onlineSetKey stores the coarse-grained online presence view used by delivery
+// decisions and admin diagnostics; connection fan-out still lives in realtime.Hub.
 const onlineSetKey = "presence:online"
 
 type Service struct {
@@ -17,6 +19,8 @@ func NewService(redisClient *redis.Client) *Service {
 	return &Service{redis: redisClient}
 }
 
+// MarkOnline and MarkOffline intentionally keep presence state small and
+// writable at high frequency instead of turning MySQL into a heartbeat sink.
 func (s *Service) MarkOnline(ctx context.Context, userID uint64) error {
 	return s.redis.SAdd(ctx, onlineSetKey, userID).Err()
 }
@@ -25,6 +29,8 @@ func (s *Service) MarkOffline(ctx context.Context, userID uint64) error {
 	return s.redis.SRem(ctx, onlineSetKey, userID).Err()
 }
 
+// OnlineMap batches membership checks in one pipeline so message delivery logic
+// can classify recipients without issuing one round-trip per user.
 func (s *Service) OnlineMap(ctx context.Context, userIDs []uint64) (map[uint64]bool, error) {
 	result := make(map[uint64]bool, len(userIDs))
 	if len(userIDs) == 0 {

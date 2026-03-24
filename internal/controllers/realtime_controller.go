@@ -23,6 +23,8 @@ type RealtimeController struct {
 }
 
 const (
+	// Ping cadence stays comfortably inside the pong deadline so the server
+	// detects dead connections without churning healthy mobile clients.
 	wsWriteWait = 10 * time.Second
 	wsPongWait  = 60 * time.Second
 	wsPingEvery = (wsPongWait * 9) / 10
@@ -32,6 +34,8 @@ func NewRealtimeController(authService *auth.Service, presenceService *presence.
 	return &RealtimeController{authService: authService, presence: presenceService, hub: hub}
 }
 
+// ServeWS authenticates once, registers the socket in the per-user hub, and
+// then relies on ping/pong plus read deadlines to clean up broken sessions.
 func (ctl *RealtimeController) ServeWS(c *gin.Context) {
 	ctx, span := observability.Tracer("realtime.ws").Start(c.Request.Context(), "websocket.connect")
 	defer span.End()

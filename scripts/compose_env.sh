@@ -61,3 +61,7 @@ export ROOT_DIR RUNTIME_DIR COMPOSE_STATE_FILE
 compose_cmd() {
   docker compose -f deploy/compose/docker-compose.yml "$@"
 }
+
+compose_release_cmd() {
+  docker compose -f deploy/compose/docker-compose.release.yml "$@"
+}
