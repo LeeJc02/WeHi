@@ -1,10 +1,19 @@
 .DS_Store
 .idea/
+.vscode/
 
 .runtime/
 doc/
 docs/
 deploy/compose/docker-compose.isolated-test.yml
+
+.env
+.env.*
+!.env.example
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
 
 frontend/node_modules/
 frontend/.next/
