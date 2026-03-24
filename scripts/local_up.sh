@@ -3,6 +3,8 @@ set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/local-env.sh"
 
+BACKEND_DIR="$ROOT_DIR/backend"
+
 MYSQLD_BIN="${MYSQLD_BIN:-$(command -v mysqld)}"
 MYSQLD_SAFE_BIN="${MYSQLD_SAFE_BIN:-$(command -v mysqld_safe || true)}"
 MYSQL_BIN="${MYSQL_BIN:-$(command -v mysql)}"
@@ -277,13 +279,16 @@ start_redis() {
 }
 
 run_migrations() {
-  env \
-    MYSQL_DSN="$MYSQL_DSN" \
-    REDIS_ADDR="$REDIS_ADDR" \
-    RABBITMQ_URL="$RABBITMQ_URL" \
-    ELASTICSEARCH_URL="$ELASTICSEARCH_URL" \
-    JWT_SECRET="$JWT_SECRET" \
-    go run ./cmd/migrate
+  (
+    cd "$BACKEND_DIR"
+    env \
+      MYSQL_DSN="$MYSQL_DSN" \
+      REDIS_ADDR="$REDIS_ADDR" \
+      RABBITMQ_URL="$RABBITMQ_URL" \
+      ELASTICSEARCH_URL="$ELASTICSEARCH_URL" \
+      JWT_SECRET="$JWT_SECRET" \
+      go run ./cmd/migrate
+  )
 }
 
 start_service() {
@@ -299,31 +304,23 @@ start_service() {
     return
   fi
 
-  env \
-    APP_PORT="$port" \
-    MYSQL_DSN="$MYSQL_DSN" \
-    REDIS_ADDR="$REDIS_ADDR" \
-    RABBITMQ_URL="$RABBITMQ_URL" \
-    ELASTICSEARCH_URL="$ELASTICSEARCH_URL" \
-    JWT_SECRET="$JWT_SECRET" \
-    AUTH_SERVICE_URL="http://127.0.0.1:${AUTH_PORT}" \
-    API_SERVICE_URL="http://127.0.0.1:${API_PORT}" \
-    REALTIME_SERVICE_URL="http://127.0.0.1:${REALTIME_PORT}" \
-    CORS_ORIGINS="$CORS_ORIGINS" \
-    go build -o "$binary" "$path"
+  (
+    cd "$BACKEND_DIR"
+    env \
+      APP_PORT="$port" \
+      MYSQL_DSN="$MYSQL_DSN" \
+      REDIS_ADDR="$REDIS_ADDR" \
+      RABBITMQ_URL="$RABBITMQ_URL" \
+      ELASTICSEARCH_URL="$ELASTICSEARCH_URL" \
+      JWT_SECRET="$JWT_SECRET" \
+      AUTH_SERVICE_URL="http://127.0.0.1:${AUTH_PORT}" \
+      API_SERVICE_URL="http://127.0.0.1:${API_PORT}" \
+      REALTIME_SERVICE_URL="http://127.0.0.1:${REALTIME_PORT}" \
+      CORS_ORIGINS="$CORS_ORIGINS" \
+      go build -o "$binary" "$path"
+  )
 
-  nohup env \
-    APP_PORT="$port" \
-    MYSQL_DSN="$MYSQL_DSN" \
-    REDIS_ADDR="$REDIS_ADDR" \
-    RABBITMQ_URL="$RABBITMQ_URL" \
-    ELASTICSEARCH_URL="$ELASTICSEARCH_URL" \
-    JWT_SECRET="$JWT_SECRET" \
-    AUTH_SERVICE_URL="http://127.0.0.1:${AUTH_PORT}" \
-    API_SERVICE_URL="http://127.0.0.1:${API_PORT}" \
-    REALTIME_SERVICE_URL="http://127.0.0.1:${REALTIME_PORT}" \
-    CORS_ORIGINS="$CORS_ORIGINS" \
-    "$binary" >"$log_file" 2>&1 < /dev/null &
+  nohup bash -lc "cd '$BACKEND_DIR' && APP_PORT='$port' MYSQL_DSN='$MYSQL_DSN' REDIS_ADDR='$REDIS_ADDR' RABBITMQ_URL='$RABBITMQ_URL' ELASTICSEARCH_URL='$ELASTICSEARCH_URL' JWT_SECRET='$JWT_SECRET' AUTH_SERVICE_URL='http://127.0.0.1:${AUTH_PORT}' API_SERVICE_URL='http://127.0.0.1:${API_PORT}' REALTIME_SERVICE_URL='http://127.0.0.1:${REALTIME_PORT}' CORS_ORIGINS='$CORS_ORIGINS' '$binary'" >"$log_file" 2>&1 < /dev/null &
 
   local pid=$!
   echo "$pid" >"$pid_file"

@@ -3,6 +3,8 @@ set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/local-env.sh"
 
+BACKEND_DIR="$ROOT_DIR/backend"
+
 SERVICE_NAME="${1:-}"
 
 if [ -z "$SERVICE_NAME" ]; then
@@ -90,25 +92,20 @@ start_service() {
 
   stop_service "$pid_file" "$name" "$port"
 
-  env \
-    APP_PORT="$port" \
-    MYSQL_DSN="$MYSQL_DSN" \
-    REDIS_ADDR="$REDIS_ADDR" \
-    RABBITMQ_URL="$RABBITMQ_URL" \
-    ELASTICSEARCH_URL="$ELASTICSEARCH_URL" \
-    JWT_SECRET="$JWT_SECRET" \
-    CORS_ORIGINS="$CORS_ORIGINS" \
-    go build -o "$binary" "$path"
+  (
+    cd "$BACKEND_DIR"
+    env \
+      APP_PORT="$port" \
+      MYSQL_DSN="$MYSQL_DSN" \
+      REDIS_ADDR="$REDIS_ADDR" \
+      RABBITMQ_URL="$RABBITMQ_URL" \
+      ELASTICSEARCH_URL="$ELASTICSEARCH_URL" \
+      JWT_SECRET="$JWT_SECRET" \
+      CORS_ORIGINS="$CORS_ORIGINS" \
+      go build -o "$binary" "$path"
+  )
 
-  nohup env \
-    APP_PORT="$port" \
-    MYSQL_DSN="$MYSQL_DSN" \
-    REDIS_ADDR="$REDIS_ADDR" \
-    RABBITMQ_URL="$RABBITMQ_URL" \
-    ELASTICSEARCH_URL="$ELASTICSEARCH_URL" \
-    JWT_SECRET="$JWT_SECRET" \
-    CORS_ORIGINS="$CORS_ORIGINS" \
-    "$binary" >"$log_file" 2>&1 < /dev/null &
+  nohup bash -lc "cd '$BACKEND_DIR' && APP_PORT='$port' MYSQL_DSN='$MYSQL_DSN' REDIS_ADDR='$REDIS_ADDR' RABBITMQ_URL='$RABBITMQ_URL' ELASTICSEARCH_URL='$ELASTICSEARCH_URL' JWT_SECRET='$JWT_SECRET' CORS_ORIGINS='$CORS_ORIGINS' '$binary'" >"$log_file" 2>&1 < /dev/null &
 
   local pid=$!
   echo "$pid" >"$pid_file"

@@ -30,7 +30,7 @@ frontend-build:
 	cd frontend && npm run build
 
 go-test:
-	GOCACHE="$(GOCACHE)" go test ./cmd/... ./internal/... ./pkg/... ./services/...
+	cd backend && GOCACHE="$(GOCACHE)" go test ./cmd/... ./internal/... ./pkg/... ./services/...
 
 local-up:
 	./scripts/compose_up.sh

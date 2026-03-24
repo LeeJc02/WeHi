@@ -28,7 +28,7 @@
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --radius: 0.5rem;
+  --radius: 1rem;
   
   /* 微信主题色 */
   --wechat-green: oklch(0.65 0.17 145);
@@ -152,7 +152,10 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    background-image:
+      radial-gradient(circle at top, rgba(22, 163, 74, 0.06), transparent 22%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(246, 251, 248, 0.96));
   }
 }
 
@@ -166,5 +169,53 @@
     background-position: center;
     background-repeat: no-repeat;
     background-size: cover;
+  }
+
+  .wechat-login-card {
+    box-shadow:
+      0 24px 80px rgba(15, 23, 42, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  }
+
+  .auth-grid {
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
+  .auth-scene {
+    background:
+      linear-gradient(165deg, rgba(243, 248, 244, 0.94), rgba(229, 243, 235, 0.92) 48%, rgba(223, 236, 233, 0.92)),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent);
+  }
+
+  .auth-character {
+    transition:
+      transform 240ms ease,
+      height 240ms ease,
+      box-shadow 240ms ease;
+    animation: auth-float 6.8s ease-in-out infinite;
+  }
+
+  .auth-character:nth-of-type(2) {
+    animation-delay: -1.4s;
+  }
+
+  .auth-character:nth-of-type(3) {
+    animation-delay: -2.8s;
+  }
+
+  .auth-character:nth-of-type(4) {
+    animation-delay: -4.2s;
+  }
+}
+
+@keyframes auth-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
   }
 }

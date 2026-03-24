@@ -2,6 +2,9 @@
 .github
 .idea
 .runtime
+docs
+doc
+.DS_Store
 frontend/.next
 frontend/dist
 frontend/node_modules

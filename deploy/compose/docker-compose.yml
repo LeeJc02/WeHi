@@ -38,7 +38,7 @@ services:
 
   migrate:
     build:
-      context: ../..
+      context: ../../backend
       dockerfile: Dockerfile.service
       args:
         SERVICE_PATH: ./cmd/migrate
@@ -58,7 +58,7 @@ services:
 
   auth-service:
     build:
-      context: ../..
+      context: ../../backend
       dockerfile: Dockerfile.service
       args:
         SERVICE_PATH: ./services/auth
@@ -82,7 +82,7 @@ services:
 
   api-service:
     build:
-      context: ../..
+      context: ../../backend
       dockerfile: Dockerfile.service
       args:
         SERVICE_PATH: ./services/api
@@ -106,7 +106,7 @@ services:
 
   realtime-service:
     build:
-      context: ../..
+      context: ../../backend
       dockerfile: Dockerfile.service
       args:
         SERVICE_PATH: ./services/realtime

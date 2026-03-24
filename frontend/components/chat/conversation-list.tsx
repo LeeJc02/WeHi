@@ -73,23 +73,32 @@ export function ConversationList() {
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="flex h-full flex-col">
       {/* 头部搜索 */}
-      <div className="p-3 border-b border-panel-border">
+      <div className="border-b border-panel-border/70 px-4 pb-4 pt-5">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.22em] text-muted-foreground/70">会话</p>
+            <h2 className="mt-1 text-lg font-semibold tracking-[-0.03em] text-foreground">最近聊天</h2>
+          </div>
+          <div className="rounded-full bg-wechat-green/8 px-3 py-1 text-xs font-medium text-wechat-green">
+            {filteredConversations.length} 个会话
+          </div>
+        </div>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="搜索"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 bg-muted/50 border-0 focus-visible:ring-1 focus-visible:ring-wechat-green"
+            className="h-11 rounded-2xl border-black/5 bg-white/90 pl-10 shadow-sm focus-visible:ring-4"
           />
         </div>
       </div>
 
       {/* 会话列表 */}
       <ScrollArea className="flex-1">
-        <div className="py-1">
+        <div className="space-y-1 px-2 py-2">
           {filteredConversations.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground text-sm">
               {searchQuery ? '没有找到匹配的会话' : '暂无会话'}
@@ -134,18 +143,20 @@ function ConversationItem({
     <button
       onClick={onClick}
       className={cn(
-        'w-full flex items-center gap-3 px-3 py-3 transition-colors text-left',
-        'hover:bg-accent/50',
-        isActive && 'bg-accent',
-        conversation.pinned && !isActive && 'bg-muted/30'
+        'w-full rounded-[22px] border border-transparent px-3 py-3 text-left transition-all duration-200',
+        'hover:border-black/5 hover:bg-white/88 hover:shadow-[0_8px_18px_rgba(15,23,42,0.06)]',
+        isActive && 'border-wechat-green/14 bg-[linear-gradient(180deg,rgba(34,197,94,0.1),rgba(255,255,255,0.94))] shadow-[0_12px_26px_rgba(34,197,94,0.08)]',
+        conversation.pinned && !isActive && 'bg-white/60'
       )}
     >
       {/* 头像 */}
-      <Avatar className="h-11 w-11 rounded-lg flex-shrink-0">
+      <Avatar className="h-12 w-12 rounded-[18px] flex-shrink-0 shadow-sm">
         <AvatarFallback
           className={cn(
-            'rounded-lg text-white font-medium',
-            conversation.type === 'group' ? 'bg-blue-500' : 'bg-wechat-green'
+            'rounded-[18px] text-white font-medium',
+            conversation.type === 'group'
+              ? 'bg-[linear-gradient(145deg,#60a5fa,#2563eb)]'
+              : 'bg-[linear-gradient(145deg,var(--color-wechat-green),#0f9d58)]'
           )}
         >
           {conversation.type === 'group' ? (
@@ -166,8 +177,8 @@ function ConversationItem({
             {formatTime(conversation.last_message_at)}
           </span>
         </div>
-        <div className="flex items-center justify-between gap-2 mt-0.5">
-          <span className="text-sm text-muted-foreground truncate">
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <span className={cn('truncate text-sm', conversation.draft ? 'font-medium text-amber-700' : 'text-muted-foreground')}>
             {conversation.draft ? `草稿：${conversation.draft}` : conversation.last_message_preview || '暂无消息'}
           </span>
           <div className="flex items-center gap-1 flex-shrink-0">

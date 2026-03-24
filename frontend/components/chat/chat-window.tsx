@@ -374,12 +374,12 @@ export function ChatWindow() {
 
   if (!currentConversation) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
-        <div className="mb-4 flex h-32 w-32 items-center justify-center rounded-full bg-white/16 backdrop-blur-xl">
+      <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
+        <div className="mb-5 flex h-32 w-32 items-center justify-center rounded-[36px] border border-white/18 bg-white/14 shadow-[0_20px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl">
           <Users className="w-16 h-16 text-muted-foreground/50" />
         </div>
-        <p className="text-lg">选择一个会话开始聊天</p>
-        <p className="text-sm mt-2">或从通讯录中选择好友</p>
+        <p className="text-lg font-medium text-foreground">选择一个会话开始聊天</p>
+        <p className="mt-2 text-sm">或从通讯录中选择好友</p>
       </div>
     )
   }
@@ -390,11 +390,16 @@ export function ChatWindow() {
     .map((member) => member.remark_name || member.display_name || member.username)
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="flex h-full flex-col bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))]">
       {/* 头部 */}
-      <div className="h-14 px-4 flex items-center justify-between border-b border-white/15 bg-white/14 backdrop-blur-xl">
+      <div className="flex h-16 items-center justify-between border-b border-white/14 bg-[linear-gradient(180deg,rgba(255,255,255,0.18),rgba(255,255,255,0.12))] px-5 backdrop-blur-xl">
         <div className="flex items-center gap-3">
-          <h2 className="font-medium text-foreground">{getConversationName()}</h2>
+          <div>
+            <h2 className="font-medium text-foreground">{getConversationName()}</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {currentConversation.type === 'group' ? '群聊会话' : '私聊会话'}
+            </p>
+          </div>
           {currentConversation.type === 'group' && (
             <span className="text-sm text-muted-foreground">
               ({currentConversation.member_count}人)
@@ -458,19 +463,19 @@ export function ChatWindow() {
       </div>
 
       {currentConversation.announcement && (
-        <div className="border-b border-white/10 bg-amber-500/10 px-4 py-2 text-sm text-amber-900">
+        <div className="border-b border-white/10 bg-amber-500/10 px-5 py-2.5 text-sm text-amber-950/80">
           群公告：{currentConversation.announcement}
         </div>
       )}
 
       {typingNames.length > 0 && (
-        <div className="border-b border-white/10 bg-sky-500/10 px-4 py-2 text-sm text-sky-900">
+        <div className="border-b border-white/10 bg-sky-500/10 px-5 py-2.5 text-sm text-sky-950/80">
           {typingNames.join('、')} 正在输入...
         </div>
       )}
 
       {/* 消息区域 */}
-      <ScrollArea className="flex-1 px-4">
+      <ScrollArea className="flex-1 px-5">
         {isLoading ? (
           <div className="h-full flex items-center justify-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-wechat-green" />
@@ -514,9 +519,9 @@ export function ChatWindow() {
       </ScrollArea>
 
       {/* 输入区域 */}
-      <div className="border-t border-white/15 bg-white/14 p-3 backdrop-blur-xl">
+      <div className="border-t border-white/15 bg-[linear-gradient(180deg,rgba(255,255,255,0.16),rgba(255,255,255,0.12))] p-4 backdrop-blur-xl">
         {/* 工具栏 */}
-        <div className="flex items-center gap-1 mb-2">
+        <div className="mb-3 flex items-center gap-1">
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -580,7 +585,7 @@ export function ChatWindow() {
         />
 
         {replyTarget && (
-          <div className="mb-2 flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+          <div className="mb-3 flex items-center justify-between rounded-2xl border border-black/5 bg-white/60 px-3 py-3 text-sm shadow-sm">
             <div className="min-w-0">
               <p className="font-medium">回复消息</p>
               <p className="truncate text-muted-foreground">{getMessagePreview(replyTarget)}</p>
@@ -592,20 +597,20 @@ export function ChatWindow() {
         )}
 
         {/* 输入框 */}
-        <div className="flex items-end gap-2">
+        <div className="flex items-end gap-3 rounded-[24px] border border-white/16 bg-white/34 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.32)] backdrop-blur-xl">
           <Textarea
             ref={textareaRef}
             placeholder="输入消息..."
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="min-h-[80px] max-h-[200px] resize-none border-0 bg-transparent focus-visible:ring-0 p-0"
+            className="min-h-[84px] max-h-[200px] resize-none border-0 bg-transparent p-0 text-[15px] leading-6 focus-visible:ring-0"
             rows={3}
           />
           <Button
             onClick={handleSend}
             disabled={!inputValue.trim() || isSending || isUploading}
-            className="h-9 px-4 bg-wechat-green hover:bg-wechat-green-dark"
+            className="h-11 rounded-2xl bg-wechat-green px-5 hover:bg-wechat-green-dark"
           >
             <Send className="h-4 w-4 mr-1" />
             {isUploading ? '上传中...' : '发送'}

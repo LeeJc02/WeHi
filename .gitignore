@@ -1,6 +1,8 @@
 .DS_Store
+Thumbs.db
 .idea/
 .vscode/
+.direnv/
 
 .runtime/
 doc/
@@ -18,6 +20,9 @@ frontend/.env.production.local
 frontend/node_modules/
 frontend/.next/
 frontend/dist/
+frontend/.vercel/
 frontend/tsconfig.tsbuildinfo
 
 *.log
+*.pid
+coverage/

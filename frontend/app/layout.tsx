@@ -6,9 +6,13 @@ import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'WeChat Web',
-  description: '仿微信电脑版 Web 端聊天应用',
-  generator: 'v0.app',
+  title: {
+    default: 'WeHi',
+    template: '%s · WeHi',
+  },
+  applicationName: 'WeHi',
+  description: 'A polished distributed IM client built for the WeHi messaging stack.',
+  keywords: ['WeHi', 'instant messaging', 'distributed IM', 'Go', 'WebSocket', 'Next.js'],
   icons: {
     icon: [
       {

@@ -56,16 +56,16 @@ export function SidebarNav() {
 
   return (
     <TooltipProvider delayDuration={100}>
-      <div className="flex h-full w-16 flex-col items-center gap-2 border-r border-sidebar-border/50 bg-sidebar/72 py-4 backdrop-blur-xl">
+      <div className="flex h-full w-[72px] flex-col items-center gap-3 rounded-[26px] border border-white/10 bg-[linear-gradient(180deg,rgba(16,24,39,0.84),rgba(17,24,39,0.72))] px-2 py-4 shadow-[0_16px_40px_rgba(15,23,42,0.22)] backdrop-blur-xl">
         {/* 用户头像 */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className="relative w-10 h-10 rounded-lg p-0 hover:bg-sidebar-accent"
+              className="relative h-11 w-11 rounded-2xl p-0 text-sidebar-foreground hover:bg-white/10"
             >
-              <Avatar className="w-10 h-10 rounded-lg">
-                <AvatarFallback className="bg-wechat-green text-white rounded-lg font-medium">
+              <Avatar className="h-11 w-11 rounded-2xl">
+                <AvatarFallback className="rounded-2xl bg-[linear-gradient(145deg,var(--color-wechat-green),#0f9d58)] text-white font-medium shadow-[0_10px_24px_rgba(34,197,94,0.28)]">
                   {user?.display_name?.charAt(0) || user?.username?.charAt(0) || 'U'}
                 </AvatarFallback>
               </Avatar>
@@ -104,7 +104,7 @@ export function SidebarNav() {
         </DropdownMenu>
 
         {/* 分隔线 */}
-        <div className="w-8 h-px bg-sidebar-border my-2" />
+        <div className="my-1 h-px w-9 bg-white/10" />
 
         {/* 导航项 */}
         <nav className="flex-1 flex flex-col gap-1">
@@ -115,10 +115,10 @@ export function SidebarNav() {
                   variant="ghost"
                   size="icon"
                   className={cn(
-                    'relative w-10 h-10 rounded-lg transition-colors',
+                    'relative h-11 w-11 rounded-2xl transition-all duration-200',
                     activeView === item.id
-                      ? 'bg-sidebar-accent text-wechat-green'
-                      : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                      ? 'bg-white/12 text-wechat-green shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]'
+                      : 'text-sidebar-foreground/88 hover:bg-white/10 hover:text-sidebar-accent-foreground'
                   )}
                   onClick={() => setActiveView(item.id)}
                 >
@@ -144,10 +144,10 @@ export function SidebarNav() {
               variant="ghost"
               size="icon"
               className={cn(
-                'w-10 h-10 rounded-lg transition-colors',
+                'h-11 w-11 rounded-2xl transition-all duration-200',
                 activeView === 'settings'
-                  ? 'bg-sidebar-accent text-wechat-green'
-                  : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                  ? 'bg-white/12 text-wechat-green shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]'
+                  : 'text-sidebar-foreground/88 hover:bg-white/10 hover:text-sidebar-accent-foreground'
               )}
               onClick={() => setActiveView('settings')}
             >
