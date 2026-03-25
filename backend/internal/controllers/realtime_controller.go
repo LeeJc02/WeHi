@@ -84,6 +84,9 @@ func (ctl *RealtimeController) ServeWS(c *gin.Context) {
 
 	defer func() {
 		close(done)
+		// Presence is derived from active websocket registrations. Once the socket
+		// leaves the hub we eagerly clear Redis state so delivery checks stop
+		// treating this user as online.
 		ctl.hub.Remove(claims.UserID, conn)
 		_ = ctl.presence.MarkOffline(context.Background(), claims.UserID)
 		_ = conn.Close()

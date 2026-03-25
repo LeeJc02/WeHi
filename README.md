@@ -1,8 +1,7 @@
 <p align="center">
-  <img src="./assets/brand/wehi-logo.png" alt="WeHi" width="560" />
+  <img src="./frontend/public/wehi-logo.png" alt="WeHi" width="560" />
 </p>
 
-<h1 align="center">WeHi</h1>
 
 <p align="center">
   A polished distributed IM project with a desktop-style web client, dedicated auth/API/realtime services, and a clean container delivery workflow.
@@ -76,13 +75,14 @@ If this repository helps or gives you ideas for your own messaging stack, consid
 
 ```text
 .
-├── assets/brand/      # project logo and branding assets
 ├── backend/           # Go services, config, migrations, contracts
 ├── deploy/compose/    # local runtime and GHCR release compose files
 ├── frontend/          # Next.js client
 ├── scripts/           # compose helpers, smoke scripts, runtime helpers
 └── .github/workflows/ # CI and image publishing pipelines
 ```
+
+Brand assets for the public repository now live in `frontend/public/`, so the same logo set is used by GitHub previews, the app metadata, and the shipped frontend image.
 
 ## Local Development
 

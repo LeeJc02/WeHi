@@ -76,6 +76,9 @@ func main() {
 
 	h := realtime.NewHub()
 	realtimeController := controllers.NewRealtimeController(authService, presenceService, h)
+	// Realtime delivery intentionally consumes broker events instead of reading
+	// business tables directly so websocket fan-out stays decoupled from write
+	// transactions in api-service.
 	if err := rabbitClient.Consume("realtime.events", []string{"message.accepted", "message.persisted", "message.delivered", "message.new", "message.recalled", "message.read", "conversation.read", "typing.updated", "friend.request", "sync.notify"}, func(ctx context.Context, routingKey string, body []byte) error {
 		_ = ctx
 		switch routingKey {

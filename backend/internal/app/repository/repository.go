@@ -844,6 +844,9 @@ func (r *Repository) AppendSyncEvents(userIDs []uint64, eventType, aggregateID s
 	if len(userIDs) == 0 {
 		return nil
 	}
+	// Sync events are written per recipient instead of per conversation so
+	// reconnect replay can rebuild one user's view without re-filtering a shared
+	// stream on the client.
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -875,6 +878,8 @@ func (r *Repository) ListSyncEvents(userID, cursor uint64, limit int) ([]SyncEve
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
+	// Pagination always moves forward on the auto-increment id, which means the
+	// cursor doubles as both ordering key and replay watermark.
 	var rows []SyncEvent
 	if err := r.db.Where("user_id = ? AND id > ?", userID, cursor).
 		Order("id asc").

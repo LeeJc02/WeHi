@@ -60,6 +60,9 @@ func main() {
 	monitorService.Start(context.Background())
 	presenceService := presence.NewService(redis)
 	diagnosticsService := adminapp.NewDiagnosticsService(repo, presenceService)
+	// chatServices is the application boundary for every user-facing chat flow:
+	// REST handlers call into it for conversations, messages, search, and the
+	// sync stream while infra adapters stay injected behind dependencies.
 	chatServices := chat.NewServices(repo, rabbitClient, searchClient, presenceService, aiService, cfg.ElasticsearchMessagesIndex, cfg.ElasticsearchConversationsIndex)
 	aiService.SetReplyHandler(func(conversationID, botUserID uint64, messageType, content string) error {
 		return chatServices.Message.EmitInternalMessage(botUserID, conversationID, messageType, content)

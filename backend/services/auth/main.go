@@ -34,6 +34,9 @@ func main() {
 	authController := controllers.NewAuthController(authService)
 
 	router := gin.New()
+	// auth-service stays narrow on purpose: it owns registration, login, refresh,
+	// and session validation so the other services can trust parsed claims instead
+	// of re-implementing credential logic.
 	router.Use(httpx.RequestID(), observability.GinMiddleware(cfg.ServiceName), httpx.StructuredLogger(cfg.ServiceName), httpx.Metrics(cfg.ServiceName), gin.Recovery(), httpx.CORS(cfg.CORSOrigins))
 	router.GET("/metrics", httpx.MetricsHandler())
 	routes.RegisterAuthRoutes(router, cfg, gormDB, redis, authService, authController)

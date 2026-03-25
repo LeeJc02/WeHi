@@ -159,6 +159,8 @@ func (c *Client) Consume(queue string, bindings []string, handler func(ctx conte
 	}
 	go func() {
 		for msg := range msgs {
+			// Handlers ack only after domain processing succeeds; failed consumers
+			// requeue the message so downstream side effects can recover later.
 			ctx := otel.GetTextMapPropagator().Extract(context.Background(), amqpHeaderCarrier(msg.Headers))
 			ctx, span := observability.Tracer("rabbitmq").Start(ctx, "rabbit.consume")
 			span.SetAttributes(attribute.String("messaging.destination", c.exchange), attribute.String("messaging.routing_key", msg.RoutingKey))

@@ -1,12 +1,20 @@
 [English](./README.md)
 
 <p align="center">
-  <img src="./assets/brand/wehi-logo.png" alt="WeHi" width="560" />
+  <img src="./frontend/public/wehi-logo.png" alt="WeHi" width="560" />
 </p>
 
-# WeHi
+
 
 一个面向实时通信场景的分布式 IM 项目，提供桌面风格的 Web 客户端，以及可独立部署的认证、业务 API 与实时网关服务。
+<p align="center">
+  <a href="https://github.com/LeeJc02/WeHi/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/LeeJc02/WeHi/ci.yml?branch=main&label=CI" alt="CI" /></a>
+  <a href="https://github.com/LeeJc02/WeHi/actions/workflows/release-images.yml"><img src="https://img.shields.io/github/actions/workflow/status/LeeJc02/WeHi/release-images.yml?branch=main&label=GHCR" alt="GHCR" /></a>
+  <a href="https://github.com/LeeJc02/WeHi/blob/main/LICENSE"><img src="https://img.shields.io/github/license/LeeJc02/WeHi" alt="License" /></a>
+  <a href="https://github.com/LeeJc02/WeHi/pkgs/container/wehi%2Fauth-service"><img src="https://img.shields.io/badge/GHCR-multi--arch-07c160" alt="GHCR multi-arch" /></a>
+  <a href="https://github.com/LeeJc02/WeHi/stargazers"><img src="https://img.shields.io/github/stars/LeeJc02/WeHi?style=social" alt="GitHub stars" /></a>
+</p>
+
 
 ## 项目概览
 
@@ -89,13 +97,14 @@ make release-down
 
 ```text
 .
-├── assets/brand/      # Logo 与品牌素材
 ├── backend/           # Go 后端服务、配置、迁移与模块代码
 ├── deploy/compose/    # 本地与发布环境的 Compose 编排
 ├── frontend/          # Next.js 客户端
 ├── scripts/           # 启停、环境装配与 smoke 脚本
 └── .github/workflows/ # CI 与镜像发布
 ```
+
+对外展示所需的品牌资源现在统一放在 `frontend/public/`，这样 README、站点图标和前端构建拿到的是同一套文件。
 
 ## 验证
 

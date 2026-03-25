@@ -56,6 +56,9 @@ func (h *Hub) Broadcast(userIDs []uint64, event contracts.EventEnvelope) {
 	}, 0)
 	for _, userID := range userIDs {
 		for conn := range h.conns[userID] {
+			// Broadcast iterates the in-memory fan-out table only; it never blocks
+			// on repository lookups, which keeps realtime delivery isolated from DB
+			// latency and lets dead sockets be collected opportunistically.
 			_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := conn.WriteJSON(event); err != nil {
 				stale = append(stale, struct {

@@ -22,6 +22,8 @@ func (s *Service) CurrentCursor(userID uint64) (*contracts.SyncCursorResponse, e
 }
 
 func (s *Service) ListEvents(userID, cursor uint64, limit int) (*contracts.SyncEventsResponse, error) {
+	// The sync API returns both the page boundary and the user's current head so
+	// clients can tell whether they have fully caught up after replaying events.
 	rows, currentCursor, err := s.repo.ListSyncEvents(userID, cursor, limit)
 	if err != nil {
 		return nil, err

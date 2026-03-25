@@ -14,20 +14,8 @@ export const metadata: Metadata = {
   description: 'A polished distributed IM client built for the WeHi messaging stack.',
   keywords: ['WeHi', 'instant messaging', 'distributed IM', 'Go', 'WebSocket', 'Next.js'],
   icons: {
-    icon: [
-      {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
-      },
-    ],
+    icon: '/wehi-icon.png',
+    shortcut: '/wehi-icon.png',
     apple: '/apple-icon.png',
   },
 }

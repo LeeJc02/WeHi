@@ -55,6 +55,8 @@ func (c *Client) EnsureIndex(ctx context.Context, index string, mapping map[stri
 	if c.mock {
 		return nil
 	}
+	// Index creation is idempotent during startup so services can boot against an
+	// empty cluster without a separate migration phase for search mappings.
 	body, err := json.Marshal(mapping)
 	if err != nil {
 		return err

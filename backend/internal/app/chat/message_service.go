@@ -274,6 +274,9 @@ func (s *MessageService) persistAndFanoutMessage(senderID, conversationID uint64
 	if err != nil {
 		return contracts.MessageDTO{}, false, err
 	}
+	// Delivery is derived after the write commits. The sender only sees a
+	// "delivered" transition when at least one recipient is currently online;
+	// otherwise the message remains persisted and will converge through sync.
 	deliveryEvent := s.applyDeliveryStatus(msg, senderID)
 	if deliveryEvent != nil {
 		msg.DeliveryStatus = deliveryEvent.DeliveryStatus
@@ -289,6 +292,9 @@ func (s *MessageService) persistAndFanoutMessage(senderID, conversationID uint64
 	if !created {
 		return dto, false, nil
 	}
+	// The sender receives an immediate accepted event, while every participant
+	// gets a user-scoped sync record containing the conversation summary they are
+	// allowed to see. This keeps realtime fan-out and offline replay on one model.
 	conversationDTO, err := s.conversations.GetConversationSummary(senderID, conversationID)
 	if err != nil {
 		return contracts.MessageDTO{}, false, err
@@ -369,6 +375,8 @@ func (s *MessageService) startBotReply(userID, conversationID uint64) {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 
+		// Bot replies are best-effort asynchronous work: retries stay bounded here
+		// and persistent retry jobs capture failures that outlive the request path.
 		var replyErr error
 		for attempt := 0; attempt < 3; attempt++ {
 			reply, err := s.deps.ai.GenerateReply(ctx, userID, conversationID)
